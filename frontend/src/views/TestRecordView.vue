@@ -132,11 +132,11 @@ const size = computed(() => testRecordStore.size)
 const loading = computed(() => testRecordStore.loading)
 const totalPages = computed(() => Math.ceil(total.value / size.value))
 
-// 初始化
-//onMounted(() => {
-//  fetchData()
-//  testRecordStore.fetchCustomFields()
-//})
+ //初始化
+onMounted(() => {
+  fetchData()
+  testRecordStore.fetchTestRecordList()
+})
 
 // 获取数据列表
 const fetchData = () => {

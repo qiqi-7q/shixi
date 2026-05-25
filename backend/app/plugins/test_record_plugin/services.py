@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from app.plugins.test_record_plugin import models, schemas
 from typing import List
+from app.utils.handle_excel_testrecord import excel_to_dict_list
 
 
 # 创建
@@ -52,18 +53,33 @@ def delete_test_record(db: Session, record_id: int):
 
 
 # 批量导入
-def batch_import_records(db: Session, records: List[schemas.TestRecordCreate]):
+# def batch_import_records(db: Session, records: List[schemas.TestRecordCreate]):
+def batch_import_records(file_path: str,db: Session):
+    # records,headers = excel_to_dict_list(file_path)
+    # 1. 处理Excel文件，捕获异常
+    try:
+        records, headers = excel_to_dict_list(file_path)
+
+    except Exception as e:
+        # 其他未知异常
+        raise HTTPException(status_code=500, detail=f"数据处理失败：{str(e)}")
     if not records:
         raise HTTPException(status_code=400, detail="导入数据不能为空")
 
     success_count = 0
-    for item in records:
+    for item_dict in records:
         try:
-            db_record = models.TestRecord(**item.dict())
+            # 第一步：先把字典转成Pydantic模型，做数据格式/类型校验
+            pydantic_record = schemas.TestRecordCreate(**item_dict)
+            # 第二步：把校验通过的Pydantic模型，转成标准字典（这里才能用.dict()）
+            record_dict = pydantic_record.dict()
+            # 第三步：把字典解包，生成SQLAlchemy数据库模型实例
+            db_record = models.TestRecord(**record_dict)
             db.add(db_record)
             success_count += 1
         except Exception as e:
             db.rollback()
+            print(f"<UNK>{str(e)}")
             raise HTTPException(status_code=400, detail=f"导入失败：{str(e)}")
 
     db.commit()

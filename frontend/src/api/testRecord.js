@@ -3,9 +3,9 @@ import api from './auth'
 
 // 所有方法封装在 testRecordAPI 对象中（和 vehicleAPI 完全一致）
 export const testRecordAPI = {
-  // 获取测试记录列表（分页+搜索）
   getTestRecords: async (params = {}) => {
     const response = await api.get('/test_record/', { params })
+    console.log(response, '测试打印');
     return response.data
   },
   // 获取车辆列表

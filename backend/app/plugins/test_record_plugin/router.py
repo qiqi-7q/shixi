@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
+import os
 
 router = APIRouter()
 
@@ -32,13 +33,16 @@ def delete_record(record_id: int, db: Session = Depends(get_db)):
     return {"msg": "删除成功"}
 
 # 6. 批量本地数据导入（核心功能）
-@router.post("/batch-import")
+@router.post("/batch_import")
 def batch_import(
-    data: schemas.TestRecordBatchImport,
+    # data: schemas.TestRecordBatchImport,
+    path: str = Query(..., description="Excel文件的本地绝对路径"),
     db: Session = Depends(get_db)
 ):
+
     """
     批量本地数据导入
     请求体：{"records": [测试记录对象1, 测试记录对象2...]}
     """
-    return services.batch_import_records(db, data.records)
+    # return services.batch_import_records(db, data.records)
+    return services.batch_import_records(path,db)
