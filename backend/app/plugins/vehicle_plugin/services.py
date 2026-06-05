@@ -144,7 +144,7 @@ class BorrowService:
                 detail="Vehicle not found"
             )
         # 检查车辆状态
-        if vehicle.status != VehicleStatus.AVAILABLE:
+        if vehicle.vehicle_status != VehicleStatus.AVAILABLE:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Vehicle is not available for borrowing"
@@ -152,15 +152,11 @@ class BorrowService:
 
         # 创建借用记录
         db_borrow = models.BorrowRecord(
-            **borrow.model_dump(),
-            vehicle_code=vehicle.vehicle_code,
-            model=vehicle.model,
-            vin_code=vehicle.vin_code,
-            status="active"
+            **borrow.model_dump()
         )
 
         # 更新车辆状态
-        vehicle.status = VehicleStatus.BORROWED
+        vehicle.vehicle_status = VehicleStatus.BORROWED
 
         db.add(db_borrow)
         db.commit()
@@ -182,7 +178,7 @@ class BorrowService:
 
         # 更新车辆状态
         vehicle = VehicleService.get_vehicle(db, record.vehicle_id)
-        vehicle.status = VehicleStatus.AVAILABLE
+        vehicle.vehicle_status = VehicleStatus.AVAILABLE
 
         db.commit()
         db.refresh(record)
@@ -203,7 +199,7 @@ class BorrowService:
 
         # 更新车辆状态
         vehicle = VehicleService.get_vehicle(db, record.vehicle_id)
-        vehicle.status = VehicleStatus.AVAILABLE
+        vehicle.vehicle_status = VehicleStatus.AVAILABLE
 
         db.commit()
         db.refresh(record)

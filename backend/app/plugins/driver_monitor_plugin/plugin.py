@@ -17,5 +17,5 @@ class DriverMonitorPlugin(BasePlugin):
         # 创建表
         models.Base.metadata.create_all(bind=engine)
         # 注册路由
-        app.include_router(router, prefix="/api/driver_monitor", tags=["驾驶员监控"])
+        app.include_router(router, prefix="/api/driver_monitor", tags=["司机监控"])
 

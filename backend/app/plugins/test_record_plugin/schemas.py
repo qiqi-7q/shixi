@@ -22,7 +22,7 @@ class TestRecordBase(BaseModel):
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None
-    custom_fields: Optional[Dict[str, Any]] = None  # 自定义字段
+    # custom_fields: Optional[Dict[str, Any]] = None  # 自定义字段
 
 # 创建
 class TestRecordCreate(TestRecordBase):
@@ -45,7 +45,7 @@ class TestRecordUpdate(BaseModel):
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None
-    custom_fields: Optional[Dict[str, Any]] = None
+    # custom_fields: Optional[Dict[str, Any]] = None
 
 # 批量导入模型
 class TestRecordBatchImport(BaseModel):

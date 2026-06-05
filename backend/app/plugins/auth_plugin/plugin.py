@@ -18,4 +18,4 @@ class AuthPlugin(BasePlugin):
         # 创建数据库表
         models.Base.metadata.create_all(bind=engine)
         # 注册路由
-        app.include_router(router)
+        app.include_router(router, prefix="/api/auth", tags=["认证"])

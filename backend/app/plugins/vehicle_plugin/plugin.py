@@ -18,5 +18,5 @@ class VehiclePlugin(BasePlugin):
         # 创建数据库表
         models.Base.metadata.create_all(bind=engine)
         # 注册路由
-        app.include_router(router)
-        app.include_router(borrow_router)
+        app.include_router(router, prefix="/api/vehicle", tags=["车辆管理"])
+        app.include_router(borrow_router, prefix="/api/borrow", tags=["借用管理"])

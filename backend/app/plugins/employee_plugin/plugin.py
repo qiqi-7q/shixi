@@ -17,4 +17,3 @@ class EmployeePlugin(BasePlugin):
     def register(self, app: FastAPI):
         models.Base.metadata.create_all(bind=engine)
         app.include_router(router, prefix="/api/employee", tags=["员工管理"])
-        print("员工管理插件注册成功，接口已加载！")

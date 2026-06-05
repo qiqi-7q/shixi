@@ -18,11 +18,11 @@ def create_route(route: schemas.TestRouteCreate, db: Session = Depends(get_db)):
 @router.get("/", response_model=list[schemas.TestRouteResponse])
 def get_routes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
                route_name: Optional[str] = None,
-               route_description: Optional[str] = None,
+               route_desc: Optional[str] = None,
                route_feature: Optional[str] = None,
                min_length: Optional[int] = None, max_length: Optional[int] = None):
     return services.TestRouteService.get_test_routes(db, skip=skip, limit=limit, route_name=route_name,
-                                    route_description=route_description, route_feature=route_feature,
+                                    route_desc=route_desc, route_feature=route_feature,
                                                      min_length=min_length, max_length=max_length)
 
 # 3. 获取单条路线详情
@@ -40,18 +40,3 @@ def update_route(route_id: int, route: schemas.TestRouteUpdate, db: Session = De
 def delete_route(route_id: int, db: Session = Depends(get_db)):
     services.TestRouteService.delete_test_route(db, route_id=route_id)
     return {"msg": "删除成功"}
-
-# 6. 批量本地数据导入（核心功能）
-@router.post("/batch_import")
-def batch_import(
-    # data: schemas.TestRecordBatchImport,
-    path: str = Query(..., description="Excel文件的本地绝对路径"),
-    db: Session = Depends(get_db)
-):
-
-    """
-    批量本地数据导入
-    请求体：{"records": [测试记录对象1, 测试记录对象2...]}
-    """
-    # return services.batch_import_records(db, data.records)
-    return services.batch_import_records(path,db)

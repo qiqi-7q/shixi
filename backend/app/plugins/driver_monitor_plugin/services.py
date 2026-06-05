@@ -25,13 +25,13 @@ class DriverMonitorService:
                             test_end_date: Optional[date] = None):
         query = db.query(models.DriverMonitor)
         if driver_name:
-            query = query.filter(models.DriverMonitor.driver_name == driver_name)
+            query = query.filter(models.DriverMonitor.driver_name.contains(driver_name))
         if vin_code:
             query = query.filter(models.DriverMonitor.vin_code == vin_code)
         if test_start_date:
-            query = query.filter(models.DriverMonitor.test_start_date >= test_start_date)
+            query = query.filter(models.DriverMonitor.test_date >= test_start_date)
         if test_end_date:
-            query = query.filter(models.DriverMonitor.test_end_date <= test_end_date)
+            query = query.filter(models.DriverMonitor.test_date <= test_end_date)
         return query.offset(skip).limit(limit).all()
 
 

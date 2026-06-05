@@ -18,4 +18,3 @@ class TestRecordPlugin(BasePlugin):
         models.Base.metadata.create_all(bind=engine)
         # 注册路由
         app.include_router(router, prefix="/api/test_record", tags=["测试记录"])
-        print("✅ 测试记录插件注册成功，接口已加载！")

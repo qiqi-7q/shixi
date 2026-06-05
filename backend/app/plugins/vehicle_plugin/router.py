@@ -8,7 +8,8 @@ from app.plugins.auth_plugin.models import User
 from app.plugins.vehicle_plugin import schemas, services
 from app.plugins.vehicle_plugin.models import VehicleStatus,VehicleGroup,TestStatus
 
-router = APIRouter(prefix="/vehicles", tags=["vehicles"])
+router = APIRouter()
+
 
 # ============= 静态路由放在前面 =============
 
@@ -94,7 +95,7 @@ def delete_vehicle(
     services.VehicleService.delete_vehicle(db, vehicle_id)
     return {"message": "Vehicle deleted successfully"}
 
-borrow_router = APIRouter(prefix="/borrows", tags=["borrows"])
+borrow_router = APIRouter()
 
 # ============= 静态路由 =============
 @borrow_router.get("/stats", response_model=dict)

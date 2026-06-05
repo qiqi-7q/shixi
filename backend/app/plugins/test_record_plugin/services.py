@@ -2,13 +2,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_,or_
 from fastapi import HTTPException
 from app.plugins.test_record_plugin import models, schemas
+from app.plugins.test_record_plugin.models import FunctionMode
 from app.utils.handle_excel_testrecord import excel_to_dict_list
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Optional
 
 
 # 创建
 def create_test_record(db: Session, record: schemas.TestRecordCreate):
-    db_record = models.TestRecord(**record.dict())
+    db_record = models.TestRecord(**record.model_dump())
     db.add(db_record)
     db.commit()
     db.refresh(db_record)
@@ -16,8 +17,18 @@ def create_test_record(db: Session, record: schemas.TestRecordCreate):
 
 
 # 获取列表
-def get_test_records(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.TestRecord).offset(skip).limit(limit).all()
+def get_test_records(db: Session, skip: int = 0, limit: int = 100,
+                project:Optional[str] = None,
+                car_type:Optional[str] = None,
+                function_mode:Optional[FunctionMode] = None):
+    query = db.query(models.TestRecord)
+    if project:
+        query = query.filter(models.TestRecord.project.contains(project))
+    if car_type:
+        query = query.filter(models.TestRecord.car_type == car_type)
+    if function_mode:
+        query = query.filter(models.TestRecord.function_mode == function_mode)
+    return query.offset(skip).limit(limit).all()
 
 
 # 获取单条
@@ -34,7 +45,7 @@ def update_test_record(db: Session, record_id: int, record: schemas.TestRecordUp
     if not db_record:
         raise HTTPException(status_code=404, detail="记录不存在")
 
-    update_data = record.dict(exclude_unset=True)
+    update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)
 

@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.redis_client import RedisService
 from app.plugins.auth_plugin import schemas, services, models
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 

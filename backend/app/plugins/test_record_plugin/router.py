@@ -1,8 +1,12 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
 import os
+
+from app.plugins.test_record_plugin.models import FunctionMode
 
 router = APIRouter()
 
@@ -13,8 +17,12 @@ def create_record(record: schemas.TestRecordCreate, db: Session = Depends(get_db
 
 # 2. 获取列表
 @router.get("/", response_model=list[schemas.TestRecord])
-def get_records(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    return services.get_test_records(db, skip=skip, limit=limit)
+def get_records(skip: int = 0, limit: int = 100, db: Session = Depends(get_db),
+                project:Optional[str] = None,
+                car_type:Optional[str] = None,
+                function_mode:Optional[FunctionMode] = None):
+    return services.get_test_records(db, skip=skip, limit=limit,
+                                     project=project, car_type=car_type, function_mode=function_mode)
 
 # 3. 获取单条详情
 @router.get("/{record_id}", response_model=schemas.TestRecord)
