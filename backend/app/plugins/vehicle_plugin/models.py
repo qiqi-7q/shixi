@@ -1,8 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Enum, Date
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.core.database import Base
 import enum
+
+from sqlalchemy import Column, Date, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+
+from app.core.database import Base
 
 
 class VehicleStatus(str, enum.Enum):
@@ -47,7 +49,9 @@ class Vehicle(Base):
         Enum(TestStatus), default=TestStatus.ALL_SUPPORT, comment="测试状态"
     )
     remarks = Column(Text, comment="备注")
-    vin_code = Column(String(17), unique=True, index=True, nullable=False, comment="VIN码")
+    vin_code = Column(
+        String(17), unique=True, index=True, nullable=False, comment="VIN码"
+    )
     engine_num = Column(String(100), comment="驱动电机号/发动机号")
     plate_number = Column(String(20), nullable=False, comment="车牌号")
     temp_plate_expire_date = Column(Date, comment="临牌到期时间")
@@ -69,7 +73,9 @@ class BorrowRecord(Base):
     model = Column(String(100), comment="车型")
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
     vehicle_code = Column(String(50), comment="车辆编号")
-    vin_code = Column(String(17), unique=True, index=True, nullable=False, comment="VIN码")
+    vin_code = Column(
+        String(17), unique=True, index=True, nullable=False, comment="VIN码"
+    )
     borrower = Column(String(100), nullable=False, comment="借用人")
     borrow_time = Column(Date, nullable=False, comment="借用时间")
     driver_name = Column(String(100), comment="司机姓名")
@@ -77,7 +83,9 @@ class BorrowRecord(Base):
     driver_performance = Column(String(100), comment="司机绩效（有效工时+有效里程）")
     record_creator = Column(String(50), comment="记录创建人")
     created_at = Column(Date, server_default=func.now(), comment="创建时间")
-    status = Column(String(20), default="active", comment="借用状态：active/returned/cancelled")
+    borrow_status = Column(
+        String(20), default="active", comment="借用状态：active/returned/cancelled"
+    )
     updated_at = Column(
         Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
     )

@@ -1,8 +1,10 @@
-from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
 from datetime import datetime
+
 # from app.plugins.test_record_plugin.models import ProblemCategory, ProblemPhenomenon, TakeoverType
 from typing import Optional
+
+from pydantic import BaseModel
+
 
 # 基础模型
 class TestRecordBase(BaseModel):
@@ -24,9 +26,11 @@ class TestRecordBase(BaseModel):
     remarks: Optional[str] = None
     # custom_fields: Optional[Dict[str, Any]] = None  # 自定义字段
 
+
 # 创建
 class TestRecordCreate(TestRecordBase):
     pass
+
 
 # 更新
 class TestRecordUpdate(BaseModel):
@@ -47,10 +51,12 @@ class TestRecordUpdate(BaseModel):
     remarks: Optional[str] = None
     # custom_fields: Optional[Dict[str, Any]] = None
 
+
 # 批量导入模型
 class TestRecordBatchImport(BaseModel):
     pass
-    #records: List[TestRecordCreate]
+    # records: List[TestRecordCreate]
+
 
 # 响应模型
 class TestRecord(TestRecordBase):
@@ -59,4 +65,4 @@ class TestRecord(TestRecordBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True

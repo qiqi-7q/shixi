@@ -1,10 +1,11 @@
+from contextlib import asynccontextmanager
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
-from app.core.database import engine, Base
-from app.core.redis_client import redis_client
+
 from app.core.plugin_manager import plugin_manager
+from app.core.redis_client import redis_client
 
 
 @asynccontextmanager
@@ -49,13 +50,14 @@ plugin_manager.register_plugin("vehicle", "app.plugins.vehicle_plugin.plugin")
 print("vehicle_plugin注册成功")
 plugin_manager.register_plugin("test_record", "app.plugins.test_record_plugin.plugin")
 print("record_plugin注册成功")
-plugin_manager.register_plugin("driver_monitor", "app.plugins.driver_monitor_plugin.plugin")
+plugin_manager.register_plugin(
+    "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
+)
 print("driver_monitor_plugin注册成功")
 plugin_manager.register_plugin("test_route", "app.plugins.test_route_plugin.plugin")
 print("test_route_plugin注册成功")
 # plugin_manager.register_plugin("data_analysis", "app.plugins.data_analysis_plugin.plugin")
 # print("data_analysis_plugin注册成功")
-
 
 
 @app.get("/")
@@ -79,6 +81,6 @@ def health_check():
 
     return health_status
 
-if __name__ == "__main__":
-    uvicorn.run("app.main:app",host='127.0.0.1',port=8000,reload=True)
 
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
