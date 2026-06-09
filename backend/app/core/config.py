@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Redis配置s
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_URL: str = "redis://127.0.0.1:6379"
+    REDIS_URL: str = "redis://127.0.0.1:6379/"
     REDIS_DB: int = 0
     REDIS_PASSWORD: Optional[str] = "redis123"
     # JWT配置
