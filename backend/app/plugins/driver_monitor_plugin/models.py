@@ -1,6 +1,17 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Date, DECIMAL
-from app.core.database import Base
+import enum
+
+from sqlalchemy import Column, DECIMAL, Date, DateTime, Enum, Integer, String, Text
 from sqlalchemy.sql import func
+
+from app.core.database import Base
+
+
+class DriverStatus(enum.Enum):
+    NORMAL = "正常"
+    FATIGUE = "疲劳"
+    MILDFAIR = "轻微疲劳"
+    SEVEREFATIGUE = "严重疲劳"
+
 
 class DriverMonitor(Base):
     __tablename__ = "driver_monitors"
@@ -10,8 +21,15 @@ class DriverMonitor(Base):
 
     test_start_time = Column(DateTime, nullable=False, comment="测试开始时间")
     test_end_time = Column(DateTime, nullable=False, comment="测试结束时间")
-
-    vin_code = Column(String(17), unique=True, index=True, nullable=False, comment="测试车辆VIN号")
+    driver_status = Column(
+        Enum(DriverStatus),
+        default=DriverStatus.NORMAL,
+        nullable=False,
+        comment="司机状态",
+    )
+    vin_code = Column(
+        String(17), unique=True, index=True, nullable=False, comment="测试车辆VIN号"
+    )
     driver_name = Column(String(50), nullable=False, comment="司机姓名")
     dms_trigger_count = Column(Integer, nullable=False, comment="DMS触发次数")
 
@@ -23,4 +41,6 @@ class DriverMonitor(Base):
     remark = Column(Text, comment="备注")
 
     create_time = Column(DateTime, server_default=func.now(), comment="创建时间")
-    update_time = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
+    update_time = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )

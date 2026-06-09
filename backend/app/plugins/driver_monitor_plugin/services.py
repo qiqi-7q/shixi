@@ -1,29 +1,68 @@
 from datetime import date
 from typing import Optional
 
-from sqlalchemy.orm import Session
-from sqlalchemy import and_,or_
-from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.plugins.driver_monitor_plugin import models, schemas
 
+
 class DriverMonitorService:
+
+    @staticmethod
+    async def monitor_check(db: AsyncSession, monitor) -> str | None:
+        if not monitor:
+            return "Monitor is missing"
+        if not monitor.test_date:
+            return "Test date is missing"
+        if not monitor.test_start_time or not monitor.test_end_time:
+            return "Test start time or test end time is missing"
+        if not monitor.driver_status:
+            return "Driver status is missing"
+        if not monitor.vin_code:
+            return "VIN code is missing"
+        if not monitor.driver_name:
+            return "Driver name is missing"
+        if not monitor.test_distance:
+            return "Test distance is missing"
+        if not monitor.power_start_duration or not monitor.power_end_duration:
+            return "Power start duration or power end duration is missing"
+        if not monitor.distance:
+            return "Distance is missing"
+        vinExisting = await db.execute(
+            select(models.DriverMonitor).where(
+                models.DriverMonitor.vin_code == monitor.vin_code
+            )
+        )
+        if vinExisting.scalars().first():
+            return "vin_code already exists"
+
     # 创建
     @staticmethod
-    def create_driver_monitor(db: Session, monitor: schemas.DriverMonitorCreate):
+    async def create_driver_monitor(
+        db: AsyncSession, monitor: schemas.DriverMonitorCreate
+    ):
+        check = await DriverMonitorService.monitor_check(db, monitor)
+        if check:
+            return check
         db_monitor = models.DriverMonitor(**monitor.model_dump())
         db.add(db_monitor)
-        db.commit()
-        db.refresh(db_monitor)
-        return db_monitor
-
+        await db.commit()
+        await db.refresh(db_monitor)
+        return "success"
 
     # 获取列表
     @staticmethod
-    def get_driver_monitors(db: Session, skip: int = 0, limit: int = 100,
-                            driver_name: Optional[str] = None, vin_code: Optional[str] = None,
-                            test_start_date: Optional[date] = None,
-                            test_end_date: Optional[date] = None):
-        query = db.query(models.DriverMonitor)
+    async def get_driver_monitors(
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        driver_name: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        test_start_date: Optional[date] = None,
+        test_end_date: Optional[date] = None,
+    ):
+        query = select(models.DriverMonitor)
         if driver_name:
             query = query.filter(models.DriverMonitor.driver_name.contains(driver_name))
         if vin_code:
@@ -32,41 +71,44 @@ class DriverMonitorService:
             query = query.filter(models.DriverMonitor.test_date >= test_start_date)
         if test_end_date:
             query = query.filter(models.DriverMonitor.test_date <= test_end_date)
-        return query.offset(skip).limit(limit).all()
-
+        result_v1 = query.offset(skip).limit(limit)
+        result = await db.execute(result_v1)
+        return list(result.scalars().all())
 
     # 获取单条
     @staticmethod
-    def get_driver_monitor(db: Session, monitor_id: int):
-        monitor = db.query(models.DriverMonitor).filter(models.DriverMonitor.id == monitor_id).first()
+    async def get_driver_monitor(db: AsyncSession, monitor_id: int):
+        monitor = await db.get(models.DriverMonitor, monitor_id)
         if not monitor:
-            raise HTTPException(status_code=404, detail="记录不存在")
+            return "monitor not found"
         return monitor
-
 
     # 更新
     @staticmethod
-    def update_driver_monitor(db: Session, monitor_id: int, monitor: schemas.DriverMonitorUpdate):
-        db_monitor = db.query(models.DriverMonitor).filter(models.DriverMonitor.id == monitor_id).first()
+    async def update_driver_monitor(
+        db: AsyncSession, monitor_id: int, monitor: schemas.DriverMonitorUpdate
+    ):
+        db_monitor = await db.get(models.DriverMonitor, monitor_id)
         if not db_monitor:
-            raise HTTPException(status_code=404, detail="记录不存在")
-
+            return "monitor not found"
+        # 检查更新数据格式
+        check = await DriverMonitorService.monitor_check(db, monitor)
+        if check:
+            return check
         update_data = monitor.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_monitor, key, value)
 
-        db.commit()
-        db.refresh(db_monitor)
-        return db_monitor
-
+        await db.commit()
+        await db.refresh(db_monitor)
+        return "success"
 
     # 删除
     @staticmethod
-    def delete_driver_monitor(db: Session, monitor_id: int):
-        monitor = db.query(models.DriverMonitor).filter(models.DriverMonitor.id == monitor_id).first()
+    async def delete_driver_monitor(db: AsyncSession, monitor_id: int):
+        monitor = await db.get(models.DriverMonitor, monitor_id)
         if not monitor:
-            raise HTTPException(status_code=404, detail="记录不存在")
-        db.delete(monitor)
-        db.commit()
-        return True
-
+            return "monitor not found"
+        await db.delete(monitor)
+        await db.commit()
+        return "success"

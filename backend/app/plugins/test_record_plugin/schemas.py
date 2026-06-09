@@ -1,18 +1,22 @@
 from datetime import datetime
-
 # from app.plugins.test_record_plugin.models import ProblemCategory, ProblemPhenomenon, TakeoverType
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+from app.plugins.test_record_plugin.models import FunctionMode
 
 
 # 基础模型
 class TestRecordBase(BaseModel):
     project: str
     car_type: str
-    function_mode: Optional[str] = None
+    function_mode: Optional[FunctionMode] = None
     problem_desc: Optional[str] = None
     problem_category: Optional[str] = None
+    kpi_type: Optional[str] = None
+    problem_scene: Optional[str] = None
+    problem_type: Optional[str] = None
     problem_phenomenon: Optional[str] = None
     takeover_type: Optional[str] = None
     problem_time: datetime
@@ -39,6 +43,10 @@ class TestRecordUpdate(BaseModel):
     function_mode: Optional[str] = None
     problem_desc: Optional[str] = None
     problem_category: Optional[str] = None
+    vin_code: Optional[str] = None
+    kpi_type: Optional[str] = None
+    problem_scene: Optional[str] = None
+    problem_type: Optional[str] = None
     problem_phenomenon: Optional[str] = None
     takeover_type: Optional[str] = None
     problem_time: Optional[datetime] = None
@@ -64,5 +72,4 @@ class TestRecord(TestRecordBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

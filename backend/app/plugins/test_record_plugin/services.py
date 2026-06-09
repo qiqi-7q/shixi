@@ -1,67 +1,98 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import and_,or_
+from typing import List, Optional, Set, Tuple
+
 from fastapi import HTTPException
+from sqlalchemy import and_, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.plugins.test_record_plugin import models, schemas
 from app.plugins.test_record_plugin.models import FunctionMode
-from app.utils.handle_excel_testrecord import excel_to_dict_list
-from typing import List, Set, Tuple, Optional
+from app.utils.handle_excel_testrecord import handle_excel_some
 
 
 # 创建
-def create_test_record(db: Session, record: schemas.TestRecordCreate):
+async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate):
+    if not record:
+        return "Record is required"
+    if not record.project:
+        return "Project is missing"
+    if not record.car_type:
+        return "Car type is missing"
+    if not record.problem_time:
+        return "Problem time is missing"
+    if not record.vin_code:
+        return "Vin code is missing"
     db_record = models.TestRecord(**record.model_dump())
     db.add(db_record)
-    db.commit()
-    db.refresh(db_record)
-    return db_record
+    await db.commit()
+    await db.refresh(db_record)
+    return "success"
 
 
 # 获取列表
-def get_test_records(db: Session, skip: int = 0, limit: int = 100,
-                project:Optional[str] = None,
-                car_type:Optional[str] = None,
-                function_mode:Optional[FunctionMode] = None):
-    query = db.query(models.TestRecord)
+async def get_test_records(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    project: Optional[str] = None,
+    car_type: Optional[str] = None,
+    function_mode: Optional[FunctionMode] = None,
+):
+    stmt = select(models.TestRecord)
     if project:
-        query = query.filter(models.TestRecord.project.contains(project))
+        stmt = stmt.filter(models.TestRecord.project.contains(project))
     if car_type:
-        query = query.filter(models.TestRecord.car_type == car_type)
+        stmt = stmt.filter(models.TestRecord.car_type == car_type)
     if function_mode:
-        query = query.filter(models.TestRecord.function_mode == function_mode)
-    return query.offset(skip).limit(limit).all()
+        stmt = stmt.filter(models.TestRecord.function_mode == function_mode)
+    stmt = stmt.offset(skip).limit(limit)
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 # 获取单条
-def get_test_record(db: Session, record_id: int):
-    record = db.query(models.TestRecord).filter(models.TestRecord.id == record_id).first()
+async def get_test_record(db: AsyncSession, record_id: int):
+    record = await db.get(models.TestRecord, record_id)
     if not record:
-        raise HTTPException(status_code=404, detail="记录不存在")
+        return "Record not found"
     return record
 
 
 # 更新
-def update_test_record(db: Session, record_id: int, record: schemas.TestRecordUpdate):
-    db_record = db.query(models.TestRecord).filter(models.TestRecord.id == record_id).first()
-    if not db_record:
-        raise HTTPException(status_code=404, detail="记录不存在")
+async def update_test_record(
+    db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate
+):
 
+    db_record = await db.get(models.TestRecord, record_id)
+    if not db_record:
+        return "Record not found"
+
+    if not record:
+        return "Record is required"
+    if not record.project:
+        return "Project is missing"
+    if not record.car_type:
+        return "Car type is missing"
+    if not record.problem_time:
+        return "Problem time is missing"
+    if not record.vin_code:
+        return "Vin code is missing"
     update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)
 
-    db.commit()
-    db.refresh(db_record)
-    return db_record
+    await db.commit()
+    await db.refresh(db_record)
+    return "success"
 
 
 # 删除
-def delete_test_record(db: Session, record_id: int):
-    record = db.query(models.TestRecord).filter(models.TestRecord.id == record_id).first()
+async def delete_test_record(db: AsyncSession, record_id: int):
+    record = await db.get(models.TestRecord, record_id)
     if not record:
-        raise HTTPException(status_code=404, detail="记录不存在")
-    db.delete(record)
-    db.commit()
-    return True
+        return "Record not found"
+    await db.delete(record)
+    await db.commit()
+    return "success"
 
 
 # 批量导入
@@ -106,6 +137,7 @@ def delete_test_record(db: Session, record_id: int):
 REPEAT_CHECK_FIELDS = ["vin_code", "problem_time", "problem_desc"]
 # -----------------------------------------------------------------------------
 
+
 # ---------------------- 核心工具函数：生成数据的唯一标识键 ----------------------
 def generate_unique_key(data_dict: dict) -> Tuple:
     """
@@ -121,29 +153,26 @@ def generate_unique_key(data_dict: dict) -> Tuple:
         key_values.append(value)
     # 转成元组（不可变，可哈希）
     return tuple(key_values)
+
+
 # -----------------------------------------------------------------------------
 
-def batch_import_records(file_path: str, db: Session):
+
+async def batch_import_records(file_path: str, db: AsyncSession):
     # 1. 入口参数强制校验
     if not isinstance(file_path, str):
-        raise HTTPException(
-            status_code=400,
-            detail=f"第一个参数必须是文件路径字符串，实际收到：{type(file_path)}"
-        )
-    if not isinstance(db, Session):
-        raise HTTPException(
-            status_code=400,
-            detail=f"第二个参数必须是数据库Session对象，实际收到：{type(db)}"
-        )
+        return f"第一个参数必须是文件路径字符串，实际收到：{type(file_path)}"
+    if not isinstance(db, AsyncSession):
+        return f"第二个参数必须是数据库Session对象，实际收到：{type(db)}"
 
     # 2. 读取Excel文件：自动过滤全空行
     try:
-        excel_records, headers = excel_to_dict_list(file_path)
+        excel_records, headers = handle_excel_some(file_path)
         total_excel_rows = len(excel_records)
     # except ExcelHandleError as e:
     #     raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Excel数据处理失败：{str(e)}")
+        return f"Excel数据处理失败：{str(e)}"
 
     # 3. 第一重去重：内存去重，过滤Excel内的重复数据
     unique_records: List[dict] = []
@@ -168,7 +197,7 @@ def batch_import_records(file_path: str, db: Session):
             "total_excel_rows": total_excel_rows,
             "excel_duplicate_rows": excel_duplicate_count,
             "db_duplicate_rows": 0,
-            "success_import_rows": 0
+            "success_import_rows": 0,
         }
 
     # 4.1 批量查询数据库中已存在的重复数据（高性能，无循环请求）
@@ -215,7 +244,9 @@ def batch_import_records(file_path: str, db: Session):
             record = schemas.TestRecordCreate(**item_dict)
             valid_records.append(record)
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"第{idx+2}行数据格式错误：{str(e)}")
+            raise HTTPException(
+                status_code=400, detail=f"第{idx+2}行数据格式错误：{str(e)}"
+            )
 
     # 6. 批量写入数据库：高性能，事务安全
     success_count = 0
@@ -236,5 +267,5 @@ def batch_import_records(file_path: str, db: Session):
         "excel_duplicate_rows": excel_duplicate_count,  # Excel内过滤的重复行数
         "db_duplicate_rows": db_duplicate_count,  # 数据库已存在的重复行数
         "success_import_rows": success_count,  # 最终成功上传的新数据行数
-        "failed_import_rows": len(valid_records) - success_count  # 导入失败行数
+        "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
     }

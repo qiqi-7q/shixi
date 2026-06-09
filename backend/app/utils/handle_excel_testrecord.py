@@ -1,5 +1,4 @@
 from openpyxl import load_workbook
-import sys
 
 
 def is_empty_row(row_cells) -> bool:
@@ -21,16 +20,7 @@ def is_empty_row(row_cells) -> bool:
     return True
 
 
-# 读取Excel文件，转为字典列表
-def excel_to_dict_list(file_path):
-    # 加载Excel文件
-    try:
-        wb = load_workbook(file_path)
-        ws = wb['Sheet1']  # 默认读取Sheet1，可根据需要修改
-    except Exception as e:
-        print(f"❌ 文件读取失败：{e}")
-
-
+def handle_data(ws):
     # 处理表头：解决空表头、重复表头问题，避免字典key异常
     raw_headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
     headers = []
@@ -38,11 +28,11 @@ def excel_to_dict_list(file_path):
     for idx, h in enumerate(raw_headers):
         # 空表头自动重命名
         if h is None:
-            h = f'unknown_column_{idx+1}'
+            h = f"unknown_column_{idx+1}"
         # 重复表头自动加序号
         if h in header_count:
             header_count[h] += 1
-            h = f'{h}_{header_count[h]}'
+            h = f"{h}_{header_count[h]}"
         else:
             header_count[h] = 0
         headers.append(h)
@@ -72,6 +62,23 @@ def excel_to_dict_list(file_path):
     return dict_list, headers
 
 
+# 读取Excel文件，转为字典列表
+def excel_to_dict_list(file_path):
+    # 加载Excel文件
+    try:
+        wb = load_workbook(file_path)
+        ws = wb["Sheet1"]  # 默认读取Sheet1，可根据需要修改
+    except Exception as e:
+        return f"❌ 文件读取失败：{e}"
+    return ws
+
+
+def handle_excel_some(file_path):
+    ws = excel_to_dict_list(file_path)
+    dict_list, headers = handle_data(ws)
+
+    return dict_list, headers
+
 
 # # 4. 主程序执行
 # if __name__ == "__main__":
@@ -90,4 +97,3 @@ def excel_to_dict_list(file_path):
 #         print(f"\n第{i+1}条数据：")
 #         for key, value in item.items():
 #             print(f"  {key}: {value}")
-

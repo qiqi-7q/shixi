@@ -1,21 +1,21 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from datetime import timedelta
 from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 
-from app.core.database import get_db
 from app.core.config import settings
-from app.core.redis_client import RedisService
-from app.plugins.auth_plugin import schemas, services, models
+from app.core.database import get_db
+from app.core.redis_client import redisserve
+from app.plugins.auth_plugin import models, schemas, services
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 async def get_current_user(
-        token: str = Depends(oauth2_scheme),
-        db: Session = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -24,11 +24,13 @@ async def get_current_user(
     )
 
     # 检查token是否在黑名单中
-    if RedisService.is_token_blacklisted(token):
+    if redisserve.is_token_blacklisted(token):
         raise credentials_exception
 
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
@@ -50,8 +52,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=schemas.Token)
 def login(
-        form_data: OAuth2PasswordRequestForm = Depends(),
-        db: Session = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ):
     """用户登录"""
     user = services.AuthService.authenticate_user(
@@ -71,15 +72,17 @@ def login(
     )
 
     # 将token存储到Redis
-    RedisService.set_token(user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    RedisService.set_token(
+        user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
 
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 @router.post("/logout")
 def logout(
-        token: str = Depends(oauth2_scheme),
-        current_user: models.User = Depends(get_current_user)
+    token: str = Depends(oauth2_scheme),
+    current_user: models.User = Depends(get_current_user),
 ):
     """用户登出"""
     # 将token加入黑名单
@@ -96,21 +99,21 @@ def read_users_me(current_user: models.User = Depends(get_current_user)):
 
 @router.put("/password")
 def update_password(
-        password_update: schemas.PasswordUpdate,
-        db: Session = Depends(get_db),
-        current_user: models.User = Depends(get_current_user)
+    password_update: schemas.PasswordUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     """修改密码"""
     # 验证旧密码
     if not services.AuthService.verify_password(
-            password_update.old_password,
-            current_user.hashed_password
+        password_update.old_password, current_user.hashed_password
     ):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect old password"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password"
         )
 
     # 更新密码
-    services.AuthService.update_password(db, current_user.id, password_update.new_password)
+    services.AuthService.update_password(
+        db, current_user.id, password_update.new_password
+    )
     return {"message": "Password updated successfully"}

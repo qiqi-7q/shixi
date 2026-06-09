@@ -1,8 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, JSON, Enum
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
-from app.core.database import Base
 import enum
+
+from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy.sql import func
+
+from app.core.database import Base
+
 
 # # 问题分类枚举（可扩展）
 # class ProblemCategory(str, enum.Enum):
@@ -28,10 +30,12 @@ import enum
 #     AUTOMATIC = "automatic"  # 自动接管
 #     NO_TAKEOVER = "no_takeover"  # 未接管
 
+
 class FunctionMode(str, enum.Enum):
     NAP = "NAP"  # NAP模式
     CNAP = "CNAP"  # CNAP模式
-    ACC_LCC = "ACC_LCC"  # ACC/LCC模式
+    ACC_LCC = "ACC/LCC"  # ACC/LCC模式
+
 
 # 测试记录表（核心）
 class TestRecord(Base):
@@ -42,10 +46,17 @@ class TestRecord(Base):
     # 你要求的固定字段
     project = Column(String(100), nullable=False, comment="项目")
     car_type = Column(String(100), nullable=False, comment="车型")
-    function_mode = Column(Enum(FunctionMode), index=True,default=FunctionMode.NAP, comment="功能模式")
+    function_mode = Column(
+        Enum(FunctionMode), index=True, default=FunctionMode.NAP, comment="功能模式"
+    )
     problem_desc = Column(Text, comment="问题描述")
-    problem_category = Column(String(100), comment="问题分类")
-    problem_phenomenon = Column(String(100), comment="问题现象")
+    problem_category = Column(
+        String(100), comment="评价维度"
+    )  # 可靠性、法规安全、舒适性、可用性、其他 -->问题大类打分使用
+    kpi_type = Column(String(100), comment="KPI项")  # 新增KPI项，打分使用
+    problem_scene = Column(String(100), comment="问题场景")  # 对应一级
+    problem_type = Column(String(100), comment="问题分类")
+    problem_phenomenon = Column(String(100), comment="问题现象")  # 对应四级
     takeover_type = Column(String(100), comment="接管类型")
     problem_time = Column(DateTime, nullable=False, comment="问题时间")
     vin_code = Column(String(50), index=True, nullable=False, comment="车辆VIN号")

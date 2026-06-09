@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.plugins.vehicle_plugin.models import TestStatus, VehicleGroup, VehicleStatus
 
@@ -15,7 +15,9 @@ class VehicleBase(BaseModel):
     owner_name: str = Field(..., max_length=100, description="车主权限")
     plate_number: str = Field(..., max_length=20, description="车牌号")
     editor: str = Field(..., max_length=20, description="最后编辑人")
-
+    group: Optional[VehicleGroup] = Field(None, description="组别")
+    vehicle_status: Optional[VehicleStatus] = Field(None, description="车辆状态")
+    test_status: Optional[TestStatus] = Field(None, description="测试状态")
     # 可选字段
     vehicle_stage: Optional[str] = Field(None, max_length=20, description="车辆阶段")
     configuration: Optional[str] = Field(None, max_length=200, description="车辆配置")
@@ -63,15 +65,10 @@ class VehicleResponse(VehicleBase):
     """车辆响应模型 - 包含数据库自动生成的字段"""
 
     id: int
-    vehicle_status: VehicleStatus = Field(
-        VehicleStatus.AVAILABLE, description="车辆状态"
-    )
-    test_status: TestStatus = Field(TestStatus.ALL_SUPPORT, description="测试状态")
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BorrowRecordBase(BaseModel):
@@ -126,8 +123,7 @@ class BorrowRecordResponse(BorrowRecordBase):
     created_at: date
     updated_at: date
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # 获取Vehicle模型所有的字段

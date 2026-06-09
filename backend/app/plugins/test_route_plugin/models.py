@@ -1,8 +1,7 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, DECIMAL
+from sqlalchemy import Column, DECIMAL, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+
 from app.core.database import Base
-import enum
 
 
 # 中间关联表：测试路线与特征的多对多关系
@@ -21,6 +20,7 @@ class TestRoute(Base):
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
     route_name = Column(String(100), nullable=False, comment="路线名称")
     route_length = Column(DECIMAL(10, 1), nullable=False, comment="路线里程")
+    diff = Column(DECIMAL(3, 1), nullable=False, comment="难度系数")
     test_func = Column(String(100), nullable=False, comment="测试功能")
     route_desc = Column(Text, comment="路线描述")
     route_feature = Column(String(200), comment="路线特征")
@@ -30,8 +30,12 @@ class TestRoute(Base):
     # 多对多关联：路线特征
     # routefeatures = relationship("RouteFeature", secondary=test_route_features, back_populates="test_routes")
 
+    creator = Column(String(50), nullable=False, comment="创建人")
     create_time = Column(DateTime, server_default=func.now(), comment="创建时间")
-    update_time = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
+    update_time = Column(
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
+    )
+
 
 # class RouteFeature(Base):
 #     __tablename__ = "route_features"
@@ -41,4 +45,3 @@ class TestRoute(Base):
 #
 #     # 多对多关联：测试路线
 #     test_routes = relationship("TestRoute", secondary=test_route_features, back_populates="routefeatures")
-

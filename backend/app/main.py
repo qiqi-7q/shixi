@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.plugin_manager import plugin_manager
-from app.core.redis_client import redis_client
+from app.core.redis_client import redisserve
 
 
 @asynccontextmanager
@@ -14,10 +14,23 @@ async def lifespan(app: FastAPI):
     print("Starting up...")
     # 测试Redis连接
     try:
-        redis_client.ping()
+        await redisserve.ping()
         print("Redis connected successfully")
     except Exception as e:
         print(f"Redis connection failed: {e}")
+
+    # 注册插件
+    await plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
+    await plugin_manager.register_plugin("vehicle", "app.plugins.vehicle_plugin.plugin")
+    await plugin_manager.register_plugin(
+        "test_record", "app.plugins.test_record_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "test_route", "app.plugins.test_route_plugin.plugin"
+    )
 
     yield
     # 关闭时执行
@@ -43,25 +56,9 @@ app.add_middleware(
 # 初始化插件管理器
 plugin_manager.init_app(app)
 
-# 注册插件
-plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
-print("auth_plugin注册成功")
-plugin_manager.register_plugin("vehicle", "app.plugins.vehicle_plugin.plugin")
-print("vehicle_plugin注册成功")
-plugin_manager.register_plugin("test_record", "app.plugins.test_record_plugin.plugin")
-print("record_plugin注册成功")
-plugin_manager.register_plugin(
-    "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
-)
-print("driver_monitor_plugin注册成功")
-plugin_manager.register_plugin("test_route", "app.plugins.test_route_plugin.plugin")
-print("test_route_plugin注册成功")
-# plugin_manager.register_plugin("data_analysis", "app.plugins.data_analysis_plugin.plugin")
-# print("data_analysis_plugin注册成功")
-
 
 @app.get("/")
-def root():
+async def root():
     return {
         "message": "测试管理平台API",
         "version": "1.0.0",
@@ -70,11 +67,11 @@ def root():
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     health_status = {"status": "healthy", "redis": False}
 
     try:
-        redis_client.ping()
+        await redisserve.ping()
         health_status["redis"] = True
     except:
         pass
@@ -83,4 +80,5 @@ def health_check():
 
 
 if __name__ == "__main__":
+    # uvicorn.run("app.main:app", host="10.192.183.23", port=8000, reload=True)
     uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

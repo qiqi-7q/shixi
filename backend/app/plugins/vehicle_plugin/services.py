@@ -1,59 +1,43 @@
-from typing import Any, List, Optional
+from typing import List, Optional
 
-from fastapi import HTTPException, status
-from sqlalchemy import and_
-from sqlalchemy.orm import Session
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.vehicle_plugin import models, schemas
-
-ADVANCED_OPERATORS = {
-    "eq": lambda field, value: field == value,  # 等于
-    "ne": lambda field, value: field != value,  # 不等于
-    "contains": lambda field, value: field.contains(value),  # 包含
-    "icontains": lambda field, value: field.ilike(f"%{value}%"),  # 忽略大小写包含
-    "gt": lambda field, value: field > value,  # 大于
-    "gte": lambda field, value: field >= value,  # 大于等于
-    "lt": lambda field, value: field < value,  # 小于
-    "lte": lambda field, value: field <= value,  # 小于等于
-}
+from app.utils.build_condition import build_condition
 
 
 class VehicleService:
 
     @staticmethod
-    def _build_condition(field_name: str, operator: str, value: Any):
-        # 构建查询条件
-        field = getattr(models.Vehicle, field_name)
-        op_func = ADVANCED_OPERATORS.get(operator, ADVANCED_OPERATORS["eq"])
-        return op_func(field, value)
-
-    @staticmethod
-    def get_vehicles(
-        db: Session,
+    async def get_vehicles(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
         conditions: Optional[List[dict]] = None,
     ) -> List[models.Vehicle]:
-        query = db.query(models.Vehicle)
+        stmt = select(models.Vehicle)
+        if conditions:
+            get_condition = []
 
-        get_condition = []
+            for cond in conditions:
+                field_name = cond["advanced_field"]
+                operator = cond["advanced_operator"]
+                value = cond["advanced_value"]
 
-        for cond in conditions:
-            field_name = cond["advanced_field"]
-            operator = cond["advanced_operator"]
-            value = cond["advanced_value"]
+                condition = build_condition(models.Vehicle, field_name, operator, value)
+                if condition is not None:
+                    get_condition.append(condition)
+            # 应用查询条件
+            stmt = stmt.where(and_(*get_condition))
+        stmt = stmt.offset(skip).limit(limit)
 
-            condition = VehicleService._build_condition(field_name, operator, value)
-            if condition is not None:
-                get_condition.append(condition)
-
-        query = query.filter(and_(*get_condition))
-
-        return query.offset(skip).limit(limit).all()
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
-    def get_vehicles_simple(
-        db: Session,
+    async def get_vehicles_simple(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
         vehicle_status: Optional[models.VehicleStatus] = None,
@@ -61,190 +45,199 @@ class VehicleService:
         vin_code: Optional[str] = None,
         model: Optional[str] = None,
     ) -> List[models.Vehicle]:
-
-        query = db.query(models.Vehicle)
+        stmt = select(models.Vehicle)
 
         if vehicle_status:
-            query = query.filter(models.Vehicle.vehicle_status == vehicle_status)
+            stmt = stmt.where(models.Vehicle.vehicle_status == vehicle_status)
         if group:
-            query = query.filter(models.Vehicle.group == group)
+            stmt = stmt.where(models.Vehicle.group == group)
         if vin_code:
-            query = query.filter(models.Vehicle.vin_code.contains(vin_code))
+            stmt = stmt.where(models.Vehicle.vin_code.contains(vin_code))
         if model:
-            query = query.filter(models.Vehicle.model == model)
-
-        return query.offset(skip).limit(limit).all()
+            stmt = stmt.where(models.Vehicle.model == model)
+        stmt = stmt.offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
-    def get_vehicle(db: Session, vehicle_id: int) -> models.Vehicle:
-        vehicle = (
-            db.query(models.Vehicle).filter(models.Vehicle.id == vehicle_id).first()
-        )
+    async def get_vehicle(db: AsyncSession, vehicle_id: int) -> models.Vehicle | str:
+        vehicle = await db.get(models.Vehicle, vehicle_id)
         if not vehicle:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found"
-            )
+            return "Vehicle not found"
         return vehicle
 
     @staticmethod
-    def get_vehicle_status(db: Session, vehicle_id: int) -> dict:
-        vehicle = VehicleService.get_vehicle(db, vehicle_id)
+    async def get_vehicle_status(db: AsyncSession, vehicle_id: int) -> str:
+        vehicle = await VehicleService.get_vehicle(db, vehicle_id)
         if vehicle.vehicle_status == models.VehicleStatus.AVAILABLE:
-            return {"now_status": "Available"}
+            return "Available"
         else:
-            return {"now_status": "Already Borrowed"}
+            return "Already Borrowed"
 
     @staticmethod
-    def get_vehicle_by_code(db: Session, vehicle_code: str) -> models.Vehicle:
-        return (
-            db.query(models.Vehicle)
-            .filter(models.Vehicle.vehicle_code == vehicle_code)
-            .first()
-        )
-
-    @staticmethod
-    def create_vehicle(db: Session, vehicle: schemas.VehicleCreate) -> models.Vehicle:
-        # 检查车辆编号是否已存在
-        existing = VehicleService.get_vehicle_by_code(db, vehicle.vehicle_code)
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Vehicle code already exists",
+    async def vehicle_check(db: AsyncSession, vehicles) -> str | None:
+        if not vehicles:
+            return "Vehicle data is missing"
+        if not vehicles.vehicle_code:
+            return "Vehicle code is missing"
+        if not vehicles.vin_code:
+            return "VIN code is missing"
+        if not vehicles.model:
+            return "Model is missing"
+        if not vehicles.owner_name:
+            return "Owner name is missing"
+        if not vehicles.plate_number:
+            return "Plate number is missing"
+        if not vehicles.editor:
+            return "Editor is missing"
+        vecodeExisting = await db.execute(
+            select(models.Vehicle).where(
+                models.Vehicle.vehicle_code == vehicles.vehicle_code
             )
+        )
+        if vecodeExisting.scalars().first():
+            return "vehicle_code already exists"
+        vinExisting = await db.execute(
+            select(models.Vehicle).where(models.Vehicle.vin_code == vehicles.vin_code)
+        )
+        if vinExisting.scalars().first():
+            return "vin_code already exists"
+
+    @staticmethod
+    async def create_vehicle(
+        db: AsyncSession, vehicle: schemas.VehicleCreate
+    ) -> models.Vehicle | str:
+        check_result = await VehicleService.vehicle_check(db, vehicle)
+        if check_result:
+            return check_result
 
         db_vehicle = models.Vehicle(**vehicle.model_dump())
         db.add(db_vehicle)
-        db.commit()
-        db.refresh(db_vehicle)
-        return db_vehicle
+        await db.commit()
+        await db.refresh(db_vehicle)
+        return "success"
 
     @staticmethod
-    def update_vehicle(
-        db: Session, vehicle_id: int, vehicle_update: schemas.VehicleUpdate
-    ) -> models.Vehicle:
-        db_vehicle = VehicleService.get_vehicle(db, vehicle_id)
-
+    async def update_vehicle(
+        db: AsyncSession, vehicle_id: int, vehicle_update: schemas.VehicleUpdate
+    ) -> str:
+        db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
+        if not db_vehicle:
+            return "Vehicle not found"
+        check_result = await VehicleService.vehicle_check(db, vehicle_update)
+        if check_result:
+            return check_result
         update_data = vehicle_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_vehicle, field, value)
-
-        db.commit()
-        db.refresh(db_vehicle)
-        return db_vehicle
+        await db.commit()
+        await db.refresh(db_vehicle)
+        return "success"
 
     @staticmethod
-    def delete_vehicle(db: Session, vehicle_id: int):
-        db_vehicle = VehicleService.get_vehicle(db, vehicle_id)
-        db.delete(db_vehicle)
-        db.commit()
+    async def delete_vehicle(db: AsyncSession, vehicle_id: int) -> str:
+        db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
+        if not db_vehicle:
+            return "Vehicle not found"
+        await db.delete(db_vehicle)
+        await db.commit()
+        return "success"
 
 
 class BorrowService:
 
-    @staticmethod
-    def _build_condition(field_name: str, operator: str, value: Any):
-        # 构建查询条件
-        field = getattr(models.BorrowRecord, field_name)
-        op_func = ADVANCED_OPERATORS.get(operator, ADVANCED_OPERATORS["eq"])
-        return op_func(field, value)
+    # @staticmethod
+    # def _build_condition(field_name: str, operator: str, value: Any):
+    #     # 构建查询条件
+    #     field = getattr(models.BorrowRecord, field_name)
+    #     op_func = settings.ADVANCED_OPERATORS.get(operator, settings.ADVANCED_OPERATORS["eq"])
+    #     return op_func(field, value)
 
     @staticmethod
-    def get_borrow_records_simple(
-        db: Session,
+    async def get_borrow_records_simple(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
         model: Optional[str] = None,
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
     ) -> List[models.BorrowRecord]:
-        query = db.query(models.BorrowRecord)
+        stmt = select(models.BorrowRecord)
         if borrow_status:
-            query = query.filter(models.BorrowRecord.borrow_status == borrow_status)
+            stmt = stmt.where(models.BorrowRecord.borrow_status == borrow_status)
         if model:
-            query = query.filter(models.BorrowRecord.model == model)
+            stmt = stmt.where(models.BorrowRecord.model == model)
         if vin_code:
-            query = query.filter(models.BorrowRecord.vin_code.contains(vin_code))
-
-        return (
-            query.order_by(models.BorrowRecord.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+            stmt = stmt.where(models.BorrowRecord.vin_code.contains(vin_code))
+        stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
+        stmt = stmt.offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
-    def get_borrow_records(
-        db: Session,
+    async def get_borrow_records(
+        db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
         conditions: Optional[List[dict]] = None,
     ) -> List[models.BorrowRecord]:
-        query = db.query(models.BorrowRecord)
+        stmt = select(models.BorrowRecord)
+        if conditions:
+            borrow_condition = []
 
-        borrow_condition = []
+            for cond in conditions:
+                field_name = cond["advanced_field"]
+                operator = cond["advanced_operator"]
+                value = cond["advanced_value"]
 
-        for cond in conditions:
-            field_name = cond["advanced_field"]
-            operator = cond["advanced_operator"]
-            value = cond["advanced_value"]
+                condition = build_condition(
+                    models.BorrowRecord, field_name, operator, value
+                )
+                if condition is not None:
+                    borrow_condition.append(condition)
 
-            condition = BorrowService._build_condition(field_name, operator, value)
-            if condition is not None:
-                borrow_condition.append(condition)
-
-        query = query.filter(and_(*borrow_condition))
-
-        return (
-            query.order_by(models.BorrowRecord.created_at.desc())
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+            stmt = stmt.where(and_(*borrow_condition))
+        stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
+        stmt = stmt.offset(skip).limit(limit)
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
-    def get_borrow_record(db: Session, record_id: int) -> models.BorrowRecord:
-        record = (
-            db.query(models.BorrowRecord)
-            .filter(models.BorrowRecord.id == record_id)
-            .first()
-        )
+    async def get_borrow_record(
+        db: AsyncSession, record_id: int
+    ) -> models.BorrowRecord | str:
+        record = await db.get(models.BorrowRecord, record_id)
+
         if not record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Borrow record not found"
-            )
+            return "Borrow record not found"
         return record
 
+    # 获取车辆的所有活动借用记录
     @staticmethod
-    def get_active_borrows_by_vehicle(
-        db: Session, vehicle_id: int
+    async def get_active_borrows_by_vehicle(
+        db: AsyncSession, vehicle_id: int
     ) -> List[models.BorrowRecord]:
-        return (
-            db.query(models.BorrowRecord)
-            .filter(
-                and_(
-                    models.BorrowRecord.vehicle_id == vehicle_id,
-                    models.BorrowRecord.borrow_status == "active",
-                )
+        stmt = select(models.BorrowRecord).where(
+            and_(
+                models.BorrowRecord.vehicle_id == vehicle_id,
+                models.BorrowRecord.borrow_status == "active",
             )
-            .all()
         )
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
-    def create_borrow_record(
-        db: Session, borrow: schemas.BorrowRecordCreate
-    ) -> models.BorrowRecord:
+    async def create_borrow_record(
+        db: AsyncSession, borrow: schemas.BorrowRecordCreate
+    ) -> bool | str:
+        if not borrow.borrower:
+            return "Borrower is missing"
+        if not borrow.borrow_time:
+            return "Borrow time is missing"
         # 检查车辆是否存在
-        vehicle = VehicleService.get_vehicle(db, borrow.vehicle_id)
+        vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
         if not vehicle:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Vehicle not found"
-            )
-        # 检查车辆状态
-        if vehicle.vehicle_status != models.VehicleStatus.AVAILABLE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Vehicle is not available for borrowing",
-            )
+            return "Vehicle not found"
 
         # 创建借用记录
         db_borrow = models.BorrowRecord(**borrow.model_dump())
@@ -253,48 +246,73 @@ class BorrowService:
         vehicle.vehicle_status = models.VehicleStatus.BORROWED
 
         db.add(db_borrow)
-        db.commit()
-        db.refresh(db_borrow)
-        return db_borrow
+        await db.commit()
+        await db.refresh(db_borrow)
+        return "success"
 
     @staticmethod
-    def return_vehicle(db: Session, record_id: int) -> models.BorrowRecord:
-        record = BorrowService.get_borrow_record(db, record_id)
+    async def update_borrow_record(
+        db: AsyncSession, record_id: int, borrow_update: schemas.BorrowRecordUpdate
+    ) -> bool | str:
+        if not borrow_update.borrower:
+            return "Borrower is missing"
+        if not borrow_update.borrow_time:
+            return "Borrow time is missing"
+        record = await BorrowService.get_borrow_record(db, record_id)
+        if not record:
+            return "Borrow record not found"
+        update_data = borrow_update.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(record, field, value)
 
-        if record.borrow_status != "active":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This borrow record is not active",
-            )
+        await db.commit()
+        await db.refresh(record)
+        return "success"
+
+    @staticmethod
+    async def delete_borrow_record(db: AsyncSession, record_id: int):
+        record = await BorrowService.get_borrow_record(db, record_id)
+        if not record:
+            return "Borrow record not found"
+        await db.delete(record)
+        await db.commit()
+        return "success"
+
+    @staticmethod
+    async def return_vehicle(db: AsyncSession, record_id: int) -> bool | str:
+        record = await BorrowService.get_borrow_record(db, record_id)
+        if not record:
+            return "Borrow record not found"
+        if not record.borrow_status != "active":
+            return "This borrow record is not active for returning"
 
         # 更新借用记录
         record.borrow_status = "returned"
 
         # 更新车辆状态
-        vehicle = VehicleService.get_vehicle(db, record.vehicle_id)
+        vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
         vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
 
-        db.commit()
-        db.refresh(record)
-        return record
+        await db.commit()
+        await db.refresh(record)
+        return "success"
 
     @staticmethod
-    def cancel_borrow(db: Session, record_id: int) -> models.BorrowRecord:
-        record = BorrowService.get_borrow_record(db, record_id)
+    async def cancel_borrow(db: AsyncSession, record_id: int) -> bool | str:
+        record = await BorrowService.get_borrow_record(db, record_id)
 
-        if record.borrow_status != "active":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This borrow record is not active",
-            )
+        if not record:
+            return "Borrow record not found"
+        if not record.borrow_status != "active":
+            return "This borrow record is not active for canceling"
 
         # 更新借用记录
         record.borrow_status = "cancelled"
 
         # 更新车辆状态
-        vehicle = VehicleService.get_vehicle(db, record.vehicle_id)
+        vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
         vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
 
-        db.commit()
-        db.refresh(record)
-        return record
+        await db.commit()
+        await db.refresh(record)
+        return "success"
