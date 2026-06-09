@@ -1,5 +1,6 @@
-from pydantic_settings import BaseSettings
 from typing import Optional
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -7,14 +8,15 @@ class Settings(BaseSettings):
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "shang"
-    MYSQL_DATABASE: str = "data_platform_test"
+    MYSQL_PASSWORD: str = "root"
+    MYSQL_DATABASE: str = "auto_test_platform"
 
     # Redis配置s
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    REDIS_URL: str = "redis://127.0.0.1:6379"
     REDIS_DB: int = 0
-    REDIS_PASSWORD: Optional[str] = '123456'
+    REDIS_PASSWORD: Optional[str] = "redis123"
     # JWT配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

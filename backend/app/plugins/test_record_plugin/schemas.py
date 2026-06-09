@@ -40,7 +40,7 @@ class TestRecordCreate(TestRecordBase):
 class TestRecordUpdate(BaseModel):
     project: Optional[str] = None
     car_type: Optional[str] = None
-    function_mode: Optional[str] = None
+    function_mode: Optional[FunctionMode] = None
     problem_desc: Optional[str] = None
     problem_category: Optional[str] = None
     vin_code: Optional[str] = None

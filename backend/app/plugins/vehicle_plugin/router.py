@@ -229,13 +229,13 @@ async def get_borrow_records(
             return {
                 "message": f"Invalid advanced_field: {cond['advanced_field']} ",
                 "code": 400,
-                "data": None
+                "data": None,
             }
         if cond["advanced_operator"] not in settings.ADVANCED_OPERATORS:
             return {
                 "message": f"Invalid advanced_operator: {cond['advanced_operator']} ",
                 "code": 400,
-                "data": None
+                "data": None,
             }
 
     records = await services.BorrowService.get_borrow_records(
@@ -256,7 +256,11 @@ async def create_borrow_record(
     """创建借用记录"""
     result = await services.BorrowService.create_borrow_record(db, borrow)
     if result == "success":
-        return {"message": "Borrow record created successfully", "code": 200, "data": None}
+        return {
+            "message": "Borrow record created successfully",
+            "code": 200,
+            "data": None,
+        }
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -287,7 +291,11 @@ async def update_borrow_record(
         db, record_id, borrow_update
     )
     if result == "success":
-        return {"message": "Borrow record updated successfully", "code": 200, "data": None}
+        return {
+            "message": "Borrow record updated successfully",
+            "code": 200,
+            "data": None,
+        }
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -301,7 +309,11 @@ async def delete_borrow_record(
     """删除借用记录"""
     result = await services.BorrowService.delete_borrow_record(db, record_id)
     if result == "success":
-        return {"message": "Borrow record deleted successfully", "code": 200, "data": None}
+        return {
+            "message": "Borrow record deleted successfully",
+            "code": 200,
+            "data": None,
+        }
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -329,6 +341,10 @@ async def cancel_borrow(
     """取消借用"""
     result = await services.BorrowService.cancel_borrow(db, record_id)
     if result == "success":
-        return {"message": "Borrow record canceled successfully", "code": 200, "data": None}
+        return {
+            "message": "Borrow record canceled successfully",
+            "code": 200,
+            "data": None,
+        }
     else:
         return {"message": result, "code": 400, "data": None}

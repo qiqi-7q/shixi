@@ -66,16 +66,6 @@ async def update_test_record(
     if not db_record:
         return "Record not found"
 
-    if not record:
-        return "Record is required"
-    if not record.project:
-        return "Project is missing"
-    if not record.car_type:
-        return "Car type is missing"
-    if not record.problem_time:
-        return "Problem time is missing"
-    if not record.vin_code:
-        return "Vin code is missing"
     update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)

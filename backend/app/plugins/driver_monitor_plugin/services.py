@@ -17,14 +17,12 @@ class DriverMonitorService:
             return "Test date is missing"
         if not monitor.test_start_time or not monitor.test_end_time:
             return "Test start time or test end time is missing"
-        if not monitor.driver_status:
-            return "Driver status is missing"
         if not monitor.vin_code:
             return "VIN code is missing"
         if not monitor.driver_name:
             return "Driver name is missing"
-        if not monitor.test_distance:
-            return "Test distance is missing"
+        if not monitor.dms_trigger_count:
+            return "DMS trigger count is missing"
         if not monitor.power_start_duration or not monitor.power_end_duration:
             return "Power start duration or power end duration is missing"
         if not monitor.distance:
@@ -91,10 +89,13 @@ class DriverMonitorService:
         db_monitor = await db.get(models.DriverMonitor, monitor_id)
         if not db_monitor:
             return "monitor not found"
-        # 检查更新数据格式
-        check = await DriverMonitorService.monitor_check(db, monitor)
-        if check:
-            return check
+        vinExisting = await db.execute(
+            select(models.DriverMonitor).where(
+                models.DriverMonitor.vin_code == monitor.vin_code
+            )
+        )
+        if vinExisting.scalars().first():
+            return "vin_code already exists"
         update_data = monitor.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_monitor, key, value)

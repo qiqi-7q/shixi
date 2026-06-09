@@ -73,20 +73,10 @@ class TestRouteService:
         db_route = await db.get(models.TestRoute, route_id)
         if not db_route:
             return "route not found"
-        if not route.route_name:
-            return "route_name is empty"
-        if not route.route_length:
-            return "route_length is empty"
         if route.route_length <= 0:
             return "route_length must be greater than 0"
-        if not route.diff:
-            return "diff is empty"
         if route.diff < 0 or route.diff > 5:
             return "diff must be between 0 and 5"
-        if not route.test_func:
-            return "test_func is empty"
-        if not route.creator:
-            return "creator is empty"
         update_data = route.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_route, key, value)

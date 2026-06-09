@@ -124,9 +124,6 @@ class VehicleService:
         db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
         if not db_vehicle:
             return "Vehicle not found"
-        check_result = await VehicleService.vehicle_check(db, vehicle_update)
-        if check_result:
-            return check_result
         update_data = vehicle_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_vehicle, field, value)
@@ -254,10 +251,6 @@ class BorrowService:
     async def update_borrow_record(
         db: AsyncSession, record_id: int, borrow_update: schemas.BorrowRecordUpdate
     ) -> bool | str:
-        if not borrow_update.borrower:
-            return "Borrower is missing"
-        if not borrow_update.borrow_time:
-            return "Borrow time is missing"
         record = await BorrowService.get_borrow_record(db, record_id)
         if not record:
             return "Borrow record not found"
