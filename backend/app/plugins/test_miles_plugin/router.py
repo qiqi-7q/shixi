@@ -19,7 +19,7 @@ async def get_miles_list(
     limit: int = Query(10, description="每页显示的记录数"),
     project: str = Query(None, description="按项目精准筛选"),
     test_version: str = Query(None, description="按测试版本模糊筛选"),
-    test_function: str = Query(None, description="按测试功能模糊筛选"),
+    test_function: str = Query(None, description="按测试功能精准筛选"),
     test_start_date: str = Query(None, description="按测试开始时间精准筛选"),
     test_end_date: str = Query(None, description="按测试结束时间精准筛选"),
     db: AsyncSession = Depends(get_db)

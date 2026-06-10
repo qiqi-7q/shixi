@@ -31,6 +31,10 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "test_route", "app.plugins.test_route_plugin.plugin"
     )
+    # 新增的三个插件注册
+    await plugin_manager.register_plugin("employee", "app.plugins.employee_plugin.plugin")
+    await plugin_manager.register_plugin("test_miles", "app.plugins.test_miles_plugin.plugin")
+    await plugin_manager.register_plugin("test_task", "app.plugins.test_task_plugin.plugin")
 
     yield
     # 关闭时执行
@@ -80,5 +84,5 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="10.192.183.118", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
     # uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

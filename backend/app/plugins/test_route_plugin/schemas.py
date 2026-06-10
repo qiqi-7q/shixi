@@ -12,7 +12,7 @@ class TestRouteBase(BaseModel):
     route_name: str = Field(..., max_length=100, description="路线名称")
     route_length: Decimal = Field(..., description="路线里程")
     test_func: str = Field(..., max_length=100, description="测试功能")
-    diff: Decimal = Field(..., description="难度系数")
+    diff: Decimal = Field(..., ge=0, le=100, description="难度系数（0-100）")
     creator: str = Field(..., max_length=50, description="创建人")
 
     # 可选字段
@@ -36,7 +36,7 @@ class TestRouteUpdate(BaseModel):
     route_name: Optional[str] = Field(None, max_length=100, description="路线名称")
     route_length: Optional[Decimal] = Field(None, description="路线里程")
     test_func: Optional[str] = Field(None, max_length=100, description="测试功能")
-    diff: Optional[Decimal] = Field(None, description="难度系数")
+    diff: Optional[Decimal] = Field(None, ge=0, le=100, description="难度系数（0-100）")
     route_desc: Optional[str] = Field(None, description="路线描述")
     route_feature: Optional[str] = Field(None, max_length=200, description="路线特征")
     route_link: Optional[str] = Field(None, max_length=500, description="路线链接")

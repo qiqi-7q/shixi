@@ -147,7 +147,7 @@ async def get_test_tasks(
     if test_end_date:
         stmt = stmt.where(models.TestTask.test_time <= test_end_date)
     if test_function:
-        stmt = stmt.where(models.TestTask.test_function.like(f"%{test_function}%"))
+        stmt = stmt.where(models.TestTask.test_function == test_function)
     if task_publisher:
         stmt = stmt.where(models.TestTask.task_publisher == task_publisher)
     if test_person:
@@ -159,7 +159,7 @@ async def get_test_tasks(
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
 
-    stmt = stmt.offset(skip).limit(limit)
+    stmt = stmt.offset(skip).limit(limit).order_by((models.TestTask.id).desc())
     result = await db.execute(stmt)
     tasks = result.scalars().all()
 
@@ -316,13 +316,17 @@ async def get_daily_task_count(db: AsyncSession, start_date: str = None, end_dat
     return [{"date": str(row.date), "count": row.count} for row in result.all()]
 
 
-async def get_task_status_count(db: AsyncSession, project: str = None):
+async def get_task_status_count(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
     """获取任务状态分布"""
     stmt = select(
         models.TestTask.task_status.label('status'),
         func.count(models.TestTask.id).label('count')
     )
     
+    if start_date:
+        stmt = stmt.where(models.TestTask.created_at >= start_date)
+    if end_date:
+        stmt = stmt.where(models.TestTask.created_at <= end_date)
     if project:
         stmt = stmt.where(models.TestTask.project == project)
     
@@ -336,13 +340,17 @@ async def get_task_status_count(db: AsyncSession, project: str = None):
     return [{"status": status, "count": status_counts.get(status, 0)} for status in all_statuses]
 
 
-async def get_function_task_count(db: AsyncSession, project: str = None):
+async def get_function_task_count(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
     """获取各功能任务量"""
     stmt = select(
         models.TestTask.test_function.label('function'),
         func.count(models.TestTask.id).label('count')
     )
     
+    if start_date:
+        stmt = stmt.where(models.TestTask.created_at >= start_date)
+    if end_date:
+        stmt = stmt.where(models.TestTask.created_at <= end_date)
     if project:
         stmt = stmt.where(models.TestTask.project == project)
     
@@ -355,8 +363,8 @@ async def get_function_task_count(db: AsyncSession, project: str = None):
 async def get_task_stats(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
     """获取任务统计数据（包含所有统计信息）"""
     daily_counts = await get_daily_task_count(db, start_date, end_date)
-    status_counts = await get_task_status_count(db, project)
-    function_counts = await get_function_task_count(db, project)
+    status_counts = await get_task_status_count(db, start_date, end_date, project)
+    function_counts = await get_function_task_count(db, start_date, end_date, project)
     
     return {
         "daily_counts": daily_counts,

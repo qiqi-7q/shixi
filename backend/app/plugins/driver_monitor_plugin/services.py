@@ -12,28 +12,28 @@ class DriverMonitorService:
     @staticmethod
     async def monitor_check(db: AsyncSession, monitor) -> str | None:
         if not monitor:
-            return "Monitor is missing"
+            return "驾驶员监测信息不能为空"
         if not monitor.test_date:
-            return "Test date is missing"
+            return "日期不能为空"
         if not monitor.test_start_time or not monitor.test_end_time:
-            return "Test start time or test end time is missing"
+            return "测试时间不能为空"
         if not monitor.vin_code:
-            return "VIN code is missing"
+            return "测试车辆VIN号不能为空"
         if not monitor.driver_name:
-            return "Driver name is missing"
+            return "司机姓名不能为空"
         if not monitor.dms_trigger_count:
-            return "DMS trigger count is missing"
+            return "DMS触发次数不能为空"
         if not monitor.power_start_duration or not monitor.power_end_duration:
-            return "Power start duration or power end duration is missing"
+            return "车辆上电时间段不能为空"
         if not monitor.distance:
-            return "Distance is missing"
+            return "行驶里程不能为空"
         vinExisting = await db.execute(
             select(models.DriverMonitor).where(
                 models.DriverMonitor.vin_code == monitor.vin_code
             )
         )
         if vinExisting.scalars().first():
-            return "vin_code already exists"
+            return "测试车辆VIN号已存在"
 
     # 创建
     @staticmethod
@@ -78,7 +78,7 @@ class DriverMonitorService:
     async def get_driver_monitor(db: AsyncSession, monitor_id: int):
         monitor = await db.get(models.DriverMonitor, monitor_id)
         if not monitor:
-            return "monitor not found"
+            return "数据不存在"
         return monitor
 
     # 更新
@@ -88,14 +88,14 @@ class DriverMonitorService:
     ):
         db_monitor = await db.get(models.DriverMonitor, monitor_id)
         if not db_monitor:
-            return "monitor not found"
+            return "数据不存在"
         vinExisting = await db.execute(
             select(models.DriverMonitor).where(
                 models.DriverMonitor.vin_code == monitor.vin_code
             )
         )
         if vinExisting.scalars().first():
-            return "vin_code already exists"
+            return "测试车辆VIN号已存在"
         update_data = monitor.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_monitor, key, value)
@@ -109,7 +109,7 @@ class DriverMonitorService:
     async def delete_driver_monitor(db: AsyncSession, monitor_id: int):
         monitor = await db.get(models.DriverMonitor, monitor_id)
         if not monitor:
-            return "monitor not found"
+            return "数据不存在"
         await db.delete(monitor)
         await db.commit()
         return "success"

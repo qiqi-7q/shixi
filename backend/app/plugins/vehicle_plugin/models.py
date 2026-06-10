@@ -8,15 +8,15 @@ from app.core.database import Base
 
 
 class VehicleStatus(str, enum.Enum):
-    AVAILABLE = "available"
-    BORROWED = "borrowed"
-    MAINTENANCE = "maintenance"
+    AVAILABLE = "可借用"
+    BORROWED = "已借出"
+    MAINTENANCE = "维护中"
 
 
 class VehicleGroup(str, enum.Enum):
-    DRIVEING = "driving_group"
-    PARKING = "parking_group"
-    WARNNING = "warning_group"
+    DRIVEING = "行车组"
+    PARKING = "泊车组"
+    WARNNING = "预警组"
 
 
 class TestStatus(str, enum.Enum):

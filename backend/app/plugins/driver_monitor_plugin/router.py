@@ -19,7 +19,7 @@ async def create_monitor(
         db=db, monitor=monitor
     )
     if result == "success":
-        return {"message": "monitor created successfully", "code": 200, "data": None}
+        return {"message": "数据创建成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -69,7 +69,7 @@ async def update_monitor(
         db, monitor_id=monitor_id, monitor=monitor
     )
     if result == "success":
-        return {"message": "monitor updated successfully", "code": 200, "data": None}
+        return {"message": "数据更新成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -81,6 +81,6 @@ async def delete_monitor(monitor_id: int, db: AsyncSession = Depends(get_db)):
         db, monitor_id=monitor_id
     )
     if result == "success":
-        return {"message": "monitor deleted successfully", "code": 200, "data": None}
+        return {"message": "数据删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}

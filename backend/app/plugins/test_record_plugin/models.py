@@ -5,7 +5,6 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 
-
 # # 问题分类枚举（可扩展）
 # class ProblemCategory(str, enum.Enum):
 #     FUNCTION = "function"  # 功能问题

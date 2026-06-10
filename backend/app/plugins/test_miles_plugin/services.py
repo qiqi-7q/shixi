@@ -24,7 +24,7 @@ async def get_test_miles_list(db: AsyncSession, skip: int = 0, limit: int = 100,
         stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
     
     if test_function:
-        stmt = stmt.where(models.TestMiles.test_function.like(f"%{test_function}%"))
+        stmt = stmt.where(models.TestMiles.test_function == test_function )
     
     if test_start_date:
         stmt = stmt.where(models.TestMiles.test_time >= test_start_date)

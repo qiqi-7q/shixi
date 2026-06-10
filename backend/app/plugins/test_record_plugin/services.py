@@ -12,15 +12,15 @@ from app.utils.handle_excel_testrecord import handle_excel_some
 # 创建
 async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate):
     if not record:
-        return "Record is required"
+        return "测试记录数据不能为空"
     if not record.project:
-        return "Project is missing"
+        return "项目名不能为空"
     if not record.car_type:
-        return "Car type is missing"
+        return "车型不能为空"
     if not record.problem_time:
-        return "Problem time is missing"
+        return "问题时间不能为空"
     if not record.vin_code:
-        return "Vin code is missing"
+        return "车辆VIN号不能为空"
     db_record = models.TestRecord(**record.model_dump())
     db.add(db_record)
     await db.commit()
@@ -53,7 +53,7 @@ async def get_test_records(
 async def get_test_record(db: AsyncSession, record_id: int):
     record = await db.get(models.TestRecord, record_id)
     if not record:
-        return "Record not found"
+        return "测试记录不存在"
     return record
 
 
@@ -64,7 +64,7 @@ async def update_test_record(
 
     db_record = await db.get(models.TestRecord, record_id)
     if not db_record:
-        return "Record not found"
+        return "测试记录不存在"
 
     update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -79,7 +79,7 @@ async def update_test_record(
 async def delete_test_record(db: AsyncSession, record_id: int):
     record = await db.get(models.TestRecord, record_id)
     if not record:
-        return "Record not found"
+        return "测试记录不存在"
     await db.delete(record)
     await db.commit()
     return "success"

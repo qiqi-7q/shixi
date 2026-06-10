@@ -3,7 +3,6 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 
-
 # 中间关联表：测试路线与特征的多对多关系
 # test_route_features = Table(
 #     "test_route_features",
@@ -20,7 +19,7 @@ class TestRoute(Base):
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
     route_name = Column(String(100), nullable=False, comment="路线名称")
     route_length = Column(DECIMAL(10, 1), nullable=False, comment="路线里程")
-    diff = Column(DECIMAL(3, 1), nullable=False, comment="难度系数")
+    diff = Column(DECIMAL(3, 0), nullable=False, comment="难度系数（0-100）")
     test_func = Column(String(100), nullable=False, comment="测试功能")
     route_desc = Column(Text, comment="路线描述")
     route_feature = Column(String(200), comment="路线特征")

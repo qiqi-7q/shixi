@@ -22,6 +22,8 @@ SessionLocal = async_sessionmaker(autoflush=False, bind=engine, expire_on_commit
 
 Base = declarative_base()
 
+async_engine = engine
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as async_session:

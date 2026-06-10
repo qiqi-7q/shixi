@@ -14,19 +14,19 @@ class TestRouteService:
         db: AsyncSession, route: schemas.TestRouteCreate
     ) -> str:
         if not route.route_name:
-            return "route_name is empty"
+            return "路线名称不能为空"
         if not route.route_length:
-            return "route_length is empty"
+            return "路线里程不能为空"
         if route.route_length <= 0:
-            return "route_length must be greater than 0"
+            return "路线里程必须大于0"
         if not route.diff:
-            return "diff is empty"
-        if route.diff < 0 or route.diff > 5:
-            return "diff must be between 0 and 5"
+            return "难度系数不能为空"
+        if route.diff < 0 or route.diff > 100:
+            return "难度系数必须在0到100之间"
         if not route.test_func:
-            return "test_func is empty"
+            return "测试功能不能为空"
         if not route.creator:
-            return "creator is empty"
+            return "创建人不能为空"
         db_route = models.TestRoute(**route.model_dump())
         db.add(db_route)
         await db.commit()
@@ -62,7 +62,7 @@ class TestRouteService:
     async def get_test_route(db: AsyncSession, route_id: int) -> models.TestRoute | str:
         route = await db.get(models.TestRoute, route_id)
         if not route:
-            return "route not found"
+            return "路线不存在"
         return route
 
     # 更新
@@ -72,11 +72,11 @@ class TestRouteService:
     ) -> bool | str:
         db_route = await db.get(models.TestRoute, route_id)
         if not db_route:
-            return "route not found"
+            return "路线不存在"
         if route.route_length <= 0:
-            return "route_length must be greater than 0"
-        if route.diff < 0 or route.diff > 5:
-            return "diff must be between 0 and 5"
+            return "路线里程必须大于0"
+        if route.diff < 0 or route.diff > 100:
+            return "难度系数必须在0到100之间"
         update_data = route.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_route, key, value)
@@ -90,7 +90,7 @@ class TestRouteService:
     async def delete_test_route(db: AsyncSession, route_id: int) -> str:
         route = await db.get(models.TestRoute, route_id)
         if not route:
-            return "route not found"
+            return "路线不存在"
         await db.delete(route)
         await db.commit()
         return "success"

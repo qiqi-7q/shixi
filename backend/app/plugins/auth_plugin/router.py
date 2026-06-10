@@ -1,10 +1,11 @@
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from sqlalchemy.orm import Session
-
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.utils.send_email import send_text_email
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis_client import redisserve
@@ -15,7 +16,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -38,24 +39,24 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = services.AuthService.get_user_by_username(db, username=token_data.username)
+    user = await services.AuthService.get_user_by_username(db, username=token_data.username)
     if user is None:
         raise credentials_exception
     return user
 
 
 @router.post("/register", response_model=schemas.UserResponse)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+async def register(user: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     """用户注册"""
-    return services.AuthService.create_user(db=db, user=user)
+    return await services.AuthService.create_user(db=db, user=user)
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
     """用户登录"""
-    user = services.AuthService.authenticate_user(
+    user = await services.AuthService.authenticate_user(
         db, form_data.username, form_data.password
     )
 
@@ -72,7 +73,7 @@ def login(
     )
 
     # 将token存储到Redis
-    RedisService.set_token(
+    await redisserve.set_token(
         user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
@@ -80,7 +81,7 @@ def login(
 
 
 @router.post("/logout")
-def logout(
+async def logout(
     token: str = Depends(oauth2_scheme),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -92,15 +93,15 @@ def logout(
 
 
 @router.get("/me", response_model=schemas.UserResponse)
-def read_users_me(current_user: models.User = Depends(get_current_user)):
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
     return current_user
 
 
 @router.put("/password")
-def update_password(
+async def update_password(
     password_update: schemas.PasswordUpdate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     """修改密码"""
@@ -113,7 +114,31 @@ def update_password(
         )
 
     # 更新密码
-    services.AuthService.update_password(
+    await services.AuthService.update_password(
         db, current_user.id, password_update.new_password
     )
     return {"message": "Password updated successfully"}
+
+
+@router.put("/forgetpwd")
+async def forget_password(
+    username: str = Query(..., description="用户名"),
+    db: AsyncSession = Depends(get_db),
+):
+    """忘记密码"""
+    # 查询用户
+    stmt = select(models.User).where(models.User.username == username)
+    result = await db.execute(stmt)
+    current_user = result.scalar_one_or_none()
+    
+    if not current_user:
+        return {"message": "User not found","code":400,"data":None}
+
+
+    # 发送新密码到用户邮箱
+    await send_text_email(
+        to_email=current_user.email,
+        subject="忘记密码邮件",
+        body=f"您的新密码是{current_user.hashed_password}",
+    )
+    return {"message": "Password has been sent to your email address","code":200,"data":current_user}

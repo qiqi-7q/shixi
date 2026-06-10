@@ -17,7 +17,7 @@ async def create_record(
 ):
     result = await services.create_test_record(db=db, record=record)
     if result == "success":
-        return {"message": "record created successfully", "code": 200, "data": None}
+        return {"message": "测试记录创建成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -40,7 +40,7 @@ async def get_records(
         car_type=car_type,
         function_mode=function_mode,
     )
-    return {"message": "records retrieved successfully", "code": 200, "data": records}
+    return {"message": "success", "code": 200, "data": records}
 
 
 # 3. 获取单条详情
@@ -49,7 +49,7 @@ async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
     record = await services.get_test_record(db, record_id=record_id)
     if isinstance(record, str):
         return {"message": record, "code": 400, "data": None}
-    return {"message": "record retrieved successfully", "code": 200, "data": record}
+    return {"message": "success", "code": 200, "data": record}
 
 
 # 4. 更新
@@ -59,7 +59,7 @@ async def update_record(
 ):
     result = await services.update_test_record(db, record_id=record_id, record=record)
     if result == "success":
-        return {"message": "record updated successfully", "code": 200, "data": None}
+        return {"message": "测试记录更新成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -69,7 +69,7 @@ async def update_record(
 async def delete_record(record_id: int, db: AsyncSession = Depends(get_db)):
     result = await services.delete_test_record(db, record_id=record_id)
     if result == "success":
-        return {"message": "record deleted successfully", "code": 200, "data": None}
+        return {"message": "测试记录删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 

@@ -16,7 +16,7 @@ async def create_route(
 ):
     result = await services.TestRouteService.create_test_route(db=db, route=route)
     if result == "success":
-        return {"message": "route created successfully", "code": 200, "data": None}
+        return {"message": "路线创建成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -41,7 +41,7 @@ async def get_routes_simple(
         route_feature=route_feature,
         creator=creator,
     )
-    return {"data": result, "code": 200, "message": "success"}
+    return {"data": result, "code": 200, "message": "success", "skip": skip, "limit": limit}
 
 
 # 3. 获取单条路线详情
@@ -50,7 +50,7 @@ async def get_route(route_id: int, db: AsyncSession = Depends(get_db)):
     result = await services.TestRouteService.get_test_route(db, route_id=route_id)
     if isinstance(result, str):
         return {"data": None, "message": result, "code": 400}
-    return {"data": result, "code": 200, "message": "success"}
+    return {"data": result, "code": 200, "message": "success", "skip": skip, "limit": limit}
 
 
 # 4. 更新路线
@@ -62,7 +62,7 @@ async def update_route(
         db, route_id=route_id, route=route
     )
     if result == "success":
-        return {"message": "route updated successfully", "code": 200, "data": None}
+        return {"message": "路线更新成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
 
@@ -72,6 +72,6 @@ async def update_route(
 async def delete_route(route_id: int, db: AsyncSession = Depends(get_db)):
     result = await services.TestRouteService.delete_test_route(db, route_id=route_id)
     if result == "success":
-        return {"message": "route deleted successfully", "code": 200, "data": None}
+        return {"message": "路线删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}

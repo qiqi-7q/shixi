@@ -20,7 +20,7 @@ async def get_tasks(
     project: str = Query(None, description="按项目精准筛选"),
     test_start_date: str = Query(None, description="按测试开始时间精准筛选"),
     test_end_date: str = Query(None, description="按测试结束时间精准筛选"),
-    test_function: str = Query(None, description="按测试功能模糊筛选"),
+    test_function: str = Query(None, description="按测试功能精准筛选"),
     task_publisher: str = Query(None, description="按任务发布人精准筛选"),
     test_person: str = Query(None, description="按测试人员精准筛选"),
     task_status: str = Query(None, description="按任务状态精准筛选"),
