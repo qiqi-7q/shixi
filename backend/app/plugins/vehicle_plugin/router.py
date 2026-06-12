@@ -22,10 +22,13 @@ async def get_vehicle_overview(
         group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
         vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
         test_status: Optional[str] = Query(None, description="测试状态"),
+        start_date: Optional[str] = Query(None, description="统计起始日期（格式：YYYY-MM-DD）"),
+        end_date: Optional[str] = Query(None, description="统计截止日期（格式：YYYY-MM-DD）"),
 ):
     """获取车辆概览统计（卡片数据）"""
     stats = await services.VehicleStatsService.get_vehicle_overview(
-        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, 
+        test_status=test_status, start_date=start_date, end_date=end_date
     )
     return {"data": stats, "message": "success", "code": 200}
 
@@ -100,10 +103,11 @@ async def get_vehicles(
 async def get_vehicles_simple(
         skip: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=1000),
-        vehicle_status: Optional[models.VehicleStatus] = None,
+        vehicle_status: Optional[str] = None,
         vin_code: Optional[str] = None,
-        group: Optional[models.VehicleGroup] = None,
+        group: Optional[str] = None,
         model: Optional[str] = None,
+        test_status: Optional[str] = None,
         db: AsyncSession = Depends(get_db),
 ):
     """获取车辆列表（固定字段查询）"""
@@ -115,6 +119,7 @@ async def get_vehicles_simple(
         vehicle_status=vehicle_status,
         vin_code=vin_code,
         model=model,
+        test_status=test_status
     )
 
     return {"data": vehicleData, "message": "success", "code": 200}

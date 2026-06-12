@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Enum, Boolean
 from sqlalchemy.sql import func
 from app.core.database import Base
 from datetime import datetime
@@ -39,6 +39,7 @@ class TestTask(Base):
                         index=True, 
                         default=TaskStatus.NOT_STARTED, 
                         comment="任务状态")
+    is_kpi = Column(Boolean, default=False, comment="是否用于 KPI 统计")
     reason_desc = Column(Text, comment="原因说明")
     
     remarks = Column(Text, comment="备注")

@@ -18,6 +18,7 @@ class TestTaskBase(BaseModel):
     test_person: Optional[str] = None
     actual_mileage: Optional[float] = None
     task_status: Literal["完成", "进行中", "未开始", "未达标", "挂起"] = "未开始"
+    is_kpi: Optional[bool] = False
     reason_desc: Optional[str] = None
     remarks: Optional[str] = None
 
@@ -38,6 +39,7 @@ class TestTaskUpdate(BaseModel):
     test_person: Optional[str] = None
     actual_mileage: Optional[float] = None
     task_status: Optional[Literal["完成", "进行中", "未开始", "未达标", "挂起"]] = None
+    is_kpi: Optional[bool] = None
     reason_desc: Optional[str] = None
     remarks: Optional[str] = None
 
