@@ -5,6 +5,7 @@ from app.plugins.employee_plugin import models, schemas
 
 
 async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
+    # Literal 类型会在 Pydantic 层自动验证，此处无需额外检查
     db_employee = models.Employee(**data.dict())
     db.add(db_employee)
     await db.commit()
@@ -12,12 +13,12 @@ async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
     return db_employee
 
 
-async def get_employees(db: AsyncSession, skip: int = 0, limit: int = 100, name: str = None, company: str = None):
+async def get_employees(db: AsyncSession, skip: int = 0, limit: int = 100, name: str = None, module_name: str = None):
     stmt = select(models.Employee)
     if name:
         stmt = stmt.where(models.Employee.name.like(f"%{name}%"))
-    if company:
-        stmt = stmt.where(models.Employee.third_party_company.like(f"%{company}%"))
+    if module_name:
+        stmt = stmt.where(models.Employee.module_name.like(f"%{module_name}%"))
     
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
@@ -42,6 +43,7 @@ async def get_employee(db: AsyncSession, employee_id: int):
 
 
 async def update_employee(db: AsyncSession, employee_id: int, data: schemas.EmployeeUpdate):
+    # Literal 类型会在 Pydantic 层自动验证，此处无需额外检查
     stmt = select(models.Employee).where(models.Employee.id == employee_id)
     result = await db.execute(stmt)
     db_employee = result.scalar_one_or_none()
