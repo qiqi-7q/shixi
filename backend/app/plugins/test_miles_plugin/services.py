@@ -36,7 +36,7 @@ async def get_test_miles_list(db: AsyncSession, skip: int = 0, limit: int = 100,
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
     
-    stmt = stmt.offset(skip).limit(limit)
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestMiles.id.desc())
     result = await db.execute(stmt)
     
     return {

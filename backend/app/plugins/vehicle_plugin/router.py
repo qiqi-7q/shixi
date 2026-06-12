@@ -14,30 +14,52 @@ router = APIRouter()
 # ============= 静态路由放在前面 =============
 
 
-@router.get("/stats")
-async def get_vehicle_stats(
+@router.get("/stats/overview")
+async def get_vehicle_overview(
         db: AsyncSession = Depends(get_db),
-        # current_user: User = Depends(get_current_user)
+        model: Optional[str] = Query(None, description="车型"),
+        vin_code: Optional[str] = Query(None, description="VIN码"),
+        group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
+        vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
+        test_status: Optional[str] = Query(None, description="测试状态"),
 ):
-    """获取车辆统计信息"""
-    vehicles = await services.VehicleService.get_vehicles(db, limit=1000)
-    stats = {
-        "total": len(vehicles),
-        "available": len(
-            [v for v in vehicles if v.vehicle_status == models.VehicleStatus.AVAILABLE]
-        ),
-        "borrowed": len(
-            [v for v in vehicles if v.vehicle_status == models.VehicleStatus.BORROWED]
-        ),
-        "maintenance": len(
-            [
-                v
-                for v in vehicles
-                if v.vehicle_status == models.VehicleStatus.MAINTENANCE
-            ]
-        ),
-    }
+    """获取车辆概览统计（卡片数据）"""
+    stats = await services.VehicleStatsService.get_vehicle_overview(
+        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+    )
     return {"data": stats, "message": "success", "code": 200}
+
+
+@router.get("/stats/model_distribution")
+async def get_model_distribution(
+        db: AsyncSession = Depends(get_db),
+        model: Optional[str] = Query(None, description="车型"),
+        vin_code: Optional[str] = Query(None, description="VIN码"),
+        group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
+        vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
+        test_status: Optional[str] = Query(None, description="测试状态"),
+):
+    """获取车型分布统计（柱状图）"""
+    data = await services.VehicleStatsService.get_model_distribution(
+        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+    )
+    return {"data": data, "message": "success", "code": 200}
+
+
+@router.get("/stats/status_distribution")
+async def get_status_distribution(
+        db: AsyncSession = Depends(get_db),
+        model: Optional[str] = Query(None, description="车型"),
+        vin_code: Optional[str] = Query(None, description="VIN码"),
+        group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
+        vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
+        test_status: Optional[str] = Query(None, description="测试状态"),
+):
+    """获取车辆状态分布（饼图）"""
+    data = await services.VehicleStatsService.get_status_distribution(
+        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+    )
+    return {"data": data, "message": "success", "code": 200}
 
 
 # ============= 列表路由 =============
@@ -85,7 +107,7 @@ async def get_vehicles_simple(
         db: AsyncSession = Depends(get_db),
 ):
     """获取车辆列表（固定字段查询）"""
-    vehicleData, total = await services.VehicleService.get_vehicles_simple(
+    vehicleData = await services.VehicleService.get_vehicles_simple(
         db,
         skip=skip,
         limit=limit,
@@ -95,8 +117,7 @@ async def get_vehicles_simple(
         model=model,
     )
 
-    # 分页信息
-    return {"data": vehicleData, "message": "success", "code": 200, "total": total}
+    return {"data": vehicleData, "message": "success", "code": 200}
 
 
 @router.post("/createvehicle")
@@ -173,20 +194,34 @@ borrow_router = APIRouter()
 
 
 # ============= 静态路由 =============
-@borrow_router.get("/stats")
-async def get_borrow_stats(
+@borrow_router.get("/stats/overview")
+async def get_borrow_overview(
         db: AsyncSession = Depends(get_db),
-        # current_user: User = Depends(get_current_user)
+        model: Optional[str] = Query(None, description="车型"),
+        vin_code: Optional[str] = Query(None, description="VIN码"),
+        borrow_status: Optional[str] = Query(None, description="借用状态（active/returned/cancelled）"),
+        driver_name: Optional[str] = Query(None, description="司机姓名"),
 ):
-    """获取借用统计信息"""
-    records = await services.BorrowService.get_borrow_records(db, limit=1000)
-    stats = {
-        "total": len(records),
-        "active": len([r for r in records if r.borrow_status == "active"]),
-        "returned": len([r for r in records if r.borrow_status == "returned"]),
-        "cancelled": len([r for r in records if r.borrow_status == "cancelled"]),
-    }
+    """获取借用概览统计（卡片数据）"""
+    stats = await services.BorrowStatsService.get_borrow_overview(
+        db, model=model, vin_code=vin_code, borrow_status=borrow_status, driver_name=driver_name
+    )
     return {"data": stats, "message": "success", "code": 200}
+
+
+@borrow_router.get("/stats/status_distribution")
+async def get_borrow_status_distribution(
+        db: AsyncSession = Depends(get_db),
+        model: Optional[str] = Query(None, description="车型"),
+        vin_code: Optional[str] = Query(None, description="VIN码"),
+        borrow_status: Optional[str] = Query(None, description="借用状态（active/returned/cancelled）"),
+        driver_name: Optional[str] = Query(None, description="司机姓名"),
+):
+    """获取借用状态分布（饼图）"""
+    data = await services.BorrowStatsService.get_borrow_status_distribution(
+        db, model=model, vin_code=vin_code, borrow_status=borrow_status, driver_name=driver_name
+    )
+    return {"data": data, "message": "success", "code": 200}
 
 
 # ============= 列表路由 =============
@@ -198,7 +233,6 @@ async def get_borrow_records_simple(
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
         db: AsyncSession = Depends(get_db),
-        # current_user: User = Depends(get_current_user)
 ):
     """获取借用记录列表"""
     records = await services.BorrowService.get_borrow_records_simple(

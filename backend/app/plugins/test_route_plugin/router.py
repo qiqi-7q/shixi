@@ -27,6 +27,7 @@ async def get_routes_simple(
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
+    location: Optional[str] = None,
     route_name: Optional[str] = None,
     route_desc: Optional[str] = None,
     route_feature: Optional[str] = None,
@@ -36,12 +37,13 @@ async def get_routes_simple(
         db,
         skip=skip,
         limit=limit,
+        location = location,
         route_name=route_name,
         route_desc=route_desc,
         route_feature=route_feature,
         creator=creator,
     )
-    return {"data": result, "code": 200, "message": "success", "skip": skip, "limit": limit}
+    return {"data": result, "code": 200, "message": "success"}
 
 
 # 3. 获取单条路线详情
@@ -50,7 +52,7 @@ async def get_route(route_id: int, db: AsyncSession = Depends(get_db)):
     result = await services.TestRouteService.get_test_route(db, route_id=route_id)
     if isinstance(result, str):
         return {"data": None, "message": result, "code": 400}
-    return {"data": result, "code": 200, "message": "success", "skip": skip, "limit": limit}
+    return {"data": result, "code": 200, "message": "success"}
 
 
 # 4. 更新路线

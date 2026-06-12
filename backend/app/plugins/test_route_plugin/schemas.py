@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ========== TestRoute Schemas ==========
 class TestRouteBase(BaseModel):
     """测试路线基础模型 - 创建和更新时的核心字段"""
-
+    location: str = Field(..., max_length=100, description="地点")
     route_name: str = Field(..., max_length=100, description="路线名称")
     route_length: Decimal = Field(..., description="路线里程")
     test_func: str = Field(..., max_length=100, description="测试功能")
@@ -32,7 +32,8 @@ class TestRouteCreate(TestRouteBase):
 # 更新
 class TestRouteUpdate(BaseModel):
     """更新测试路线请求模型 - 所有字段可选"""
-
+    
+    location: Optional[str] = Field(None, max_length=100, description="地点")
     route_name: Optional[str] = Field(None, max_length=100, description="路线名称")
     route_length: Optional[Decimal] = Field(None, description="路线里程")
     test_func: Optional[str] = Field(None, max_length=100, description="测试功能")

@@ -13,6 +13,9 @@ class TestRouteService:
     async def create_test_route(
         db: AsyncSession, route: schemas.TestRouteCreate
     ) -> str:
+        # 校验地点
+        if not route.location:
+            return "地点不能为空"
         if not route.route_name:
             return "路线名称不能为空"
         if not route.route_length:
@@ -39,23 +42,44 @@ class TestRouteService:
         db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
+        location: Optional[str] = None,
         route_name: Optional[str] = None,
-        creator: Optional[str] = None,
         route_desc: Optional[str] = None,
         route_feature: Optional[str] = None,
-    ) -> List[models.TestRoute]:
+        creator: Optional[str] = None,
+    ) -> dict:
         stmt = select(models.TestRoute)
+
+        
+        # 筛选条件
+        if location:
+            stmt = stmt.filter(models.TestRoute.location.contains(location))
         if route_name:
             stmt = stmt.filter(models.TestRoute.route_name.contains(route_name))
-        if creator:
-            stmt = stmt.filter(models.TestRoute.creator.contains(creator))
         if route_desc:
             stmt = stmt.filter(models.TestRoute.route_desc.contains(route_desc))
         if route_feature:
             stmt = stmt.filter(models.TestRoute.route_feature.contains(route_feature))
-        stmt = stmt.offset(skip).limit(limit)
+        if creator:
+            stmt = stmt.filter(models.TestRoute.creator.contains(creator))
+        
+        # 统计总数
+        from sqlalchemy import func
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar_one()
+        
+        # 分页查询
+        stmt = stmt.offset(skip).limit(limit).order_by(models.TestRoute.id.desc())
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        items = list(result.scalars().all())
+        
+        return {
+            "items": items,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     # 获取单条
     @staticmethod

@@ -23,7 +23,7 @@ async def get_employees(db: AsyncSession, skip: int = 0, limit: int = 100, name:
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
     
-    stmt = stmt.offset(skip).limit(limit)
+    stmt = stmt.offset(skip).limit(limit).order_by(models.Employee.id.desc())
     result = await db.execute(stmt)
     
     return {

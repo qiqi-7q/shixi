@@ -17,7 +17,7 @@ class VehicleService:
             skip: int = 0,
             limit: int = 100,
             conditions: Optional[List[dict]] = None,
-    ) -> List[models.Vehicle]:
+    ) -> dict:
         stmt = select(models.Vehicle)
         if conditions:
             get_condition = []
@@ -31,11 +31,23 @@ class VehicleService:
                 if condition is not None:
                     get_condition.append(condition)
             # 应用查询条件
-            stmt = stmt.where(and_(*get_condition)) 
+            stmt = stmt.where(and_(*get_condition))
+        
+        # 统计总数
+        total_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(total_stmt)
+        total = total_result.scalar_one()
+        
+        # 分页查询
         stmt = stmt.offset(skip).limit(limit)
 
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return {
+            "items": list(result.scalars().all()),
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     @staticmethod
     async def get_vehicles_simple(
@@ -46,7 +58,7 @@ class VehicleService:
             group: Optional[models.VehicleGroup] = None,
             vin_code: Optional[str] = None,
             model: Optional[str] = None,
-    ) -> Tuple[List[models.Vehicle], int]:
+    ) -> dict:
         # 1. 统一收集筛选条件
         filters = []
         if vehicle_status:
@@ -72,7 +84,12 @@ class VehicleService:
         result = await db.execute(data_stmt)
         data_list = list(result.scalars().all())
 
-        return data_list, total
+        return {
+            "items": data_list,
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     @staticmethod
     async def get_vehicle(db: AsyncSession, vehicle_id: int) -> models.Vehicle | str:
@@ -178,7 +195,7 @@ class BorrowService:
             model: Optional[str] = None,
             vin_code: Optional[str] = None,
             borrow_status: Optional[str] = None,
-    ) -> List[models.BorrowRecord]:
+    ) -> dict:
         stmt = select(models.BorrowRecord)
         if borrow_status:
             stmt = stmt.where(models.BorrowRecord.borrow_status == borrow_status)
@@ -186,10 +203,21 @@ class BorrowService:
             stmt = stmt.where(models.BorrowRecord.model == model)
         if vin_code:
             stmt = stmt.where(models.BorrowRecord.vin_code.contains(vin_code))
+        
+        # 统计总数
+        total_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(total_stmt)
+        total = total_result.scalar_one()
+        
         stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return {
+            "items": list(result.scalars().all()),
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     @staticmethod
     async def get_borrow_records(
@@ -197,7 +225,7 @@ class BorrowService:
             skip: int = 0,
             limit: int = 100,
             conditions: Optional[List[dict]] = None,
-    ) -> List[models.BorrowRecord]:
+    ) -> dict:
         stmt = select(models.BorrowRecord)
         if conditions:
             borrow_condition = []
@@ -214,10 +242,21 @@ class BorrowService:
                     borrow_condition.append(condition)
 
             stmt = stmt.where(and_(*borrow_condition))
+        
+        # 统计总数
+        total_stmt = select(func.count()).select_from(stmt.subquery())
+        total_result = await db.execute(total_stmt)
+        total = total_result.scalar_one()
+        
         stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
-        return list(result.scalars().all())
+        return {
+            "items": list(result.scalars().all()),
+            "total": total,
+            "skip": skip,
+            "limit": limit
+        }
 
     @staticmethod
     async def get_borrow_record(
@@ -310,6 +349,245 @@ class BorrowService:
         await db.refresh(record)
         return "success"
 
+
+# ==================== 图表统计方法 ====================
+
+class VehicleStatsService:
+    """车辆统计服务 - 用于图表数据"""
+
+    @staticmethod
+    async def get_vehicle_overview(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> dict:
+        """获取车辆概览统计（卡片数据）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        # 总车辆数
+        total_stmt = select(func.count(models.Vehicle.id))
+        if filters:
+            total_stmt = total_stmt.where(*filters)
+        total = await db.scalar(total_stmt) or 0
+        
+        # 可用车辆数
+        available_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.AVAILABLE
+        )
+        if filters:
+            available_stmt = available_stmt.where(*filters)
+        available = await db.scalar(available_stmt) or 0
+        
+        # 已借出车辆数
+        borrowed_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.BORROWED
+        )
+        if filters:
+            borrowed_stmt = borrowed_stmt.where(*filters)
+        borrowed = await db.scalar(borrowed_stmt) or 0
+        
+        # 维护中车辆数
+        maintenance_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE
+        )
+        if filters:
+            maintenance_stmt = maintenance_stmt.where(*filters)
+        maintenance = await db.scalar(maintenance_stmt) or 0
+        
+        return {
+            "total": total,
+            "available": available,
+            "borrowed": borrowed,
+            "maintenance": maintenance
+        }
+
+    @staticmethod
+    async def get_model_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> list:
+        """获取车型分布统计（柱状图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        stmt = select(
+            models.Vehicle.model.label('model'),
+            func.count(models.Vehicle.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.Vehicle.model).order_by(func.count(models.Vehicle.id).desc())
+        
+        result = await db.execute(stmt)
+        return [{"model": row.model, "count": row.count} for row in result.all()]
+
+    @staticmethod
+    async def get_status_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> list:
+        """获取车辆状态分布（饼图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        stmt = select(
+            models.Vehicle.vehicle_status.label('status'),
+            func.count(models.Vehicle.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.Vehicle.vehicle_status)
+        
+        result = await db.execute(stmt)
+        all_statuses = ["可借用", "已借出", "维护中"]
+        status_counts = {row.status.value: row.count for row in result.all()}
+        
+        return [{"status": status, "count": status_counts.get(status, 0)} for status in all_statuses]
+
+
+class BorrowStatsService:
+    """借用统计服务 - 用于图表数据"""
+
+    @staticmethod
+    async def get_borrow_overview(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        borrow_status: Optional[str] = None,
+        driver_name: Optional[str] = None
+    ) -> dict:
+        """获取借用概览统计（卡片数据）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+        if driver_name:
+            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+        
+        # 总借用记录数
+        total_stmt = select(func.count(models.BorrowRecord.id))
+        if filters:
+            total_stmt = total_stmt.where(*filters)
+        if borrow_status:
+            total_stmt = total_stmt.where(models.BorrowRecord.borrow_status == borrow_status)
+        total = await db.scalar(total_stmt) or 0
+        
+        # 借用中数量
+        active_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "active"
+        )
+        if filters:
+            active_stmt = active_stmt.where(*filters)
+        active = await db.scalar(active_stmt) or 0
+        
+        # 已归还数量
+        returned_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "returned"
+        )
+        if filters:
+            returned_stmt = returned_stmt.where(*filters)
+        returned = await db.scalar(returned_stmt) or 0
+        
+        # 已取消数量
+        cancelled_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "cancelled"
+        )
+        if filters:
+            cancelled_stmt = cancelled_stmt.where(*filters)
+        cancelled = await db.scalar(cancelled_stmt) or 0
+        
+        return {
+            "total": total,
+            "active": active,
+            "returned": returned,
+            "cancelled": cancelled
+        }
+
+    @staticmethod
+    async def get_borrow_status_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        borrow_status: Optional[str] = None,
+        driver_name: Optional[str] = None
+    ) -> list:
+        """获取借用状态分布（饼图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+        if driver_name:
+            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+        
+        stmt = select(
+            models.BorrowRecord.borrow_status.label('status'),
+            func.count(models.BorrowRecord.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.BorrowRecord.borrow_status)
+        
+        result = await db.execute(stmt)
+        status_counts = {row.status: row.count for row in result.all()}
+        
+        return [
+            {"status": "借用中", "count": status_counts.get("active", 0)},
+            {"status": "已归还", "count": status_counts.get("returned", 0)},
+            {"status": "已取消", "count": status_counts.get("cancelled", 0)}
+        ]
+
     @staticmethod
     async def cancel_borrow(db: AsyncSession, record_id: int) -> bool | str:
         record = await BorrowService.get_borrow_record(db, record_id)
@@ -329,3 +607,242 @@ class BorrowService:
         await db.commit()
         await db.refresh(record)
         return "success"
+
+
+# ==================== 图表统计方法 ====================
+
+class VehicleStatsService:
+    """车辆统计服务 - 用于图表数据"""
+
+    @staticmethod
+    async def get_vehicle_overview(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> dict:
+        """获取车辆概览统计（卡片数据）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        # 总车辆数
+        total_stmt = select(func.count(models.Vehicle.id))
+        if filters:
+            total_stmt = total_stmt.where(*filters)
+        total = await db.scalar(total_stmt) or 0
+        
+        # 可用车辆数
+        available_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.AVAILABLE
+        )
+        if filters:
+            available_stmt = available_stmt.where(*filters)
+        available = await db.scalar(available_stmt) or 0
+        
+        # 已借出车辆数
+        borrowed_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.BORROWED
+        )
+        if filters:
+            borrowed_stmt = borrowed_stmt.where(*filters)
+        borrowed = await db.scalar(borrowed_stmt) or 0
+        
+        # 维护中车辆数
+        maintenance_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE
+        )
+        if filters:
+            maintenance_stmt = maintenance_stmt.where(*filters)
+        maintenance = await db.scalar(maintenance_stmt) or 0
+        
+        return {
+            "total": total,
+            "available": available,
+            "borrowed": borrowed,
+            "maintenance": maintenance
+        }
+
+    @staticmethod
+    async def get_model_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> list:
+        """获取车型分布统计（柱状图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        stmt = select(
+            models.Vehicle.model.label('model'),
+            func.count(models.Vehicle.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.Vehicle.model).order_by(func.count(models.Vehicle.id).desc())
+        
+        result = await db.execute(stmt)
+        return [{"model": row.model, "count": row.count} for row in result.all()]
+
+    @staticmethod
+    async def get_status_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        group: Optional[str] = None,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None
+    ) -> list:
+        """获取车辆状态分布（饼图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.Vehicle.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+        
+        stmt = select(
+            models.Vehicle.vehicle_status.label('status'),
+            func.count(models.Vehicle.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.Vehicle.vehicle_status)
+        
+        result = await db.execute(stmt)
+        all_statuses = ["可借用", "已借出", "维护中"]
+        status_counts = {row.status.value: row.count for row in result.all()}
+        
+        return [{"status": status, "count": status_counts.get(status, 0)} for status in all_statuses]
+
+
+class BorrowStatsService:
+    """借用统计服务 - 用于图表数据"""
+
+    @staticmethod
+    async def get_borrow_overview(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        borrow_status: Optional[str] = None,
+        driver_name: Optional[str] = None
+    ) -> dict:
+        """获取借用概览统计（卡片数据）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+        if driver_name:
+            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+        
+        # 总借用记录数
+        total_stmt = select(func.count(models.BorrowRecord.id))
+        if filters:
+            total_stmt = total_stmt.where(*filters)
+        if borrow_status:
+            total_stmt = total_stmt.where(models.BorrowRecord.borrow_status == borrow_status)
+        total = await db.scalar(total_stmt) or 0
+        
+        # 借用中数量
+        active_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "active"
+        )
+        if filters:
+            active_stmt = active_stmt.where(*filters)
+        active = await db.scalar(active_stmt) or 0
+        
+        # 已归还数量
+        returned_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "returned"
+        )
+        if filters:
+            returned_stmt = returned_stmt.where(*filters)
+        returned = await db.scalar(returned_stmt) or 0
+        
+        # 已取消数量
+        cancelled_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "cancelled"
+        )
+        if filters:
+            cancelled_stmt = cancelled_stmt.where(*filters)
+        cancelled = await db.scalar(cancelled_stmt) or 0
+        
+        return {
+            "total": total,
+            "active": active,
+            "returned": returned,
+            "cancelled": cancelled
+        }
+
+    @staticmethod
+    async def get_borrow_status_distribution(
+        db: AsyncSession,
+        model: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        borrow_status: Optional[str] = None,
+        driver_name: Optional[str] = None
+    ) -> list:
+        """获取借用状态分布（饼图）"""
+        # 构建筛选条件
+        filters = []
+        if model:
+            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+        if vin_code:
+            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+        if driver_name:
+            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+        
+        stmt = select(
+            models.BorrowRecord.borrow_status.label('status'),
+            func.count(models.BorrowRecord.id).label('count')
+        )
+        
+        if filters:
+            stmt = stmt.where(*filters)
+            
+        stmt = stmt.group_by(models.BorrowRecord.borrow_status)
+        
+        result = await db.execute(stmt)
+        status_counts = {row.status: row.count for row in result.all()}
+        
+        return [
+            {"status": "借用中", "count": status_counts.get("active", 0)},
+            {"status": "已归还", "count": status_counts.get("returned", 0)},
+            {"status": "已取消", "count": status_counts.get("cancelled", 0)}
+        ]

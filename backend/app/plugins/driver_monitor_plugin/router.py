@@ -34,6 +34,7 @@ async def get_monitors(
     vin_code: Optional[str] = None,
     test_start_date: Optional[date] = None,
     test_end_date: Optional[date] = None,
+    driver_status : Optional[str] = None
 ):
     result = await services.DriverMonitorService.get_driver_monitors(
         db,
@@ -43,6 +44,7 @@ async def get_monitors(
         vin_code=vin_code,
         test_start_date=test_start_date,
         test_end_date=test_end_date,
+        driver_status = driver_status
     )
     return {"data": result, "message": "success", "code": 200}
 
@@ -77,10 +79,85 @@ async def update_monitor(
 # 5. 删除
 @router.delete("/delmonitor/{monitor_id}")
 async def delete_monitor(monitor_id: int, db: AsyncSession = Depends(get_db)):
-    result = await services.DriverMonitorService.delete_driver_monitor(
-        db, monitor_id=monitor_id
-    )
+    result = await services.DriverMonitorService.delete_driver_monitor(db, monitor_id=monitor_id)
     if result == "success":
         return {"message": "数据删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
+
+
+# ========== 统计接口 ==========
+
+# 6. 获取监控概览统计
+@router.get("/stats/overview")
+async def get_monitor_overview(
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    driver_name: Optional[str] = None,
+    driver_status: Optional[str] = None,
+):
+    result = await services.DriverMonitorService.get_monitor_overview(
+        db, start_date=start_date, end_date=end_date, driver_name=driver_name, driver_status=driver_status
+    )
+    return {"data": result, "code": 200, "message": "success"}
+
+
+# 7. 获取每日疲劳状态统计
+@router.get("/stats/daily_fatigue")
+async def get_daily_fatigue_count(
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    driver_name: Optional[str] = None,
+    driver_status: Optional[str] = None,
+):
+    result = await services.DriverMonitorService.get_daily_fatigue_count(
+        db, start_date=start_date, end_date=end_date, driver_name=driver_name, driver_status=driver_status
+    )
+    return {"data": result, "code": 200, "message": "success"}
+
+
+# 8. 获取每日DMS触发次数统计
+@router.get("/stats/daily_dms")
+async def get_daily_dms_count(
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    driver_name: Optional[str] = None,
+    driver_status: Optional[str] = None,
+):
+    result = await services.DriverMonitorService.get_daily_dms_count(
+        db, start_date=start_date, end_date=end_date, driver_name=driver_name, driver_status=driver_status
+    )
+    return {"data": result, "code": 200, "message": "success"}
+
+
+# 9. 获取司机疲劳次数统计
+@router.get("/stats/driver_fatigue")
+async def get_driver_fatigue_count(
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    driver_name: Optional[str] = None,
+    driver_status: Optional[str] = None,
+):
+    result = await services.DriverMonitorService.get_driver_fatigue_count(
+        db, start_date=start_date, end_date=end_date, driver_name=driver_name, driver_status=driver_status
+    )
+    return {"data": result, "code": 200, "message": "success"}
+
+
+# 10. 获取状态分布统计
+@router.get("/stats/status_distribution")
+async def get_status_distribution(
+    db: AsyncSession = Depends(get_db),
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    driver_name: Optional[str] = None,
+    driver_status: Optional[str] = None,
+):
+    result = await services.DriverMonitorService.get_status_distribution(
+        db, start_date=start_date, end_date=end_date, driver_name=driver_name, driver_status=driver_status
+    )
+    return {"data": result, "code": 200, "message": "success"}

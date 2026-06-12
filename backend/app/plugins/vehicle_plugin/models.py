@@ -74,7 +74,7 @@ class BorrowRecord(Base):
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
     vehicle_code = Column(String(50), comment="车辆编号")
     vin_code = Column(
-        String(17), unique=True, index=True, nullable=False, comment="VIN码"
+        String(17), index=True, nullable=False, comment="VIN码"
     )
     borrower = Column(String(100), nullable=False, comment="借用人")
     borrow_time = Column(Date, nullable=False, comment="借用时间")
