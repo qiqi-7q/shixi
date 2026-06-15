@@ -85,7 +85,7 @@ class BorrowRecord(Base):
     record_creator = Column(String(50), comment="记录创建人")
     created_at = Column(Date, server_default=func.now(), comment="创建时间")
     borrow_status = Column(
-        String(20), default="active", comment="借用状态：active/returned/cancelled"
+        String(20), default="active", comment="借用状态"
     )
     updated_at = Column(
         Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"

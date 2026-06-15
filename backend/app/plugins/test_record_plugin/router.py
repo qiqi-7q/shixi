@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
-from app.plugins.test_record_plugin.models import FunctionMode
+from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
 
 router = APIRouter()
 
@@ -31,6 +31,8 @@ async def get_records(
     project: Optional[str] = None,
     car_type: Optional[str] = None,
     function_mode: Optional[FunctionMode] = None,
+    problem_category: Optional[EvaluationDimension] = None,
+    kpi_type: Optional[KPIType] = None,
 ):
     records = await services.get_test_records(
         db,
@@ -39,6 +41,8 @@ async def get_records(
         project=project,
         car_type=car_type,
         function_mode=function_mode,
+        problem_category=problem_category,
+        kpi_type=kpi_type,
     )
     return {"message": "success", "code": 200, "data": records}
 

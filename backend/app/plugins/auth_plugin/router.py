@@ -18,15 +18,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    """获取当前用户，验证失败返回 None"""
 
     # 检查token是否在黑名单中
     if redisserve.is_token_blacklisted(token):
-        raise credentials_exception
+        return None
 
     try:
         payload = jwt.decode(
@@ -34,24 +30,35 @@ async def get_current_user(
         )
         username: str = payload.get("sub")
         if username is None:
-            raise credentials_exception
+            return None
         token_data = schemas.TokenData(username=username)
     except JWTError:
-        raise credentials_exception
+        return None
 
     user = await services.AuthService.get_user_by_username(db, username=token_data.username)
-    if user is None:
-        raise credentials_exception
     return user
 
 
-@router.post("/register", response_model=schemas.UserResponse)
+@router.post("/register")
 async def register(user: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     """用户注册"""
-    return await services.AuthService.create_user(db=db, user=user)
+    result = await services.AuthService.create_user(db=db, user=user)
+    
+    # 注册成功后生成token
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = services.AuthService.create_access_token(
+        data={"sub": result.username}, expires_delta=access_token_expires
+    )
+    
+    # 将token存储到Redis
+    await redisserve.set_token(
+        result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    
+    return {"code": 201, "message": "注册成功", "data": {"user": result, "access_token": access_token, "token_type": "bearer"}}
 
 
-@router.post("/login", response_model=schemas.Token)
+@router.post("/login")
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
@@ -61,11 +68,7 @@ async def login(
     )
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return {"code": 401, "message": "Incorrect username or password", "data": None}
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = services.AuthService.create_access_token(
@@ -77,7 +80,7 @@ async def login(
         user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"code": 200, "message": "登录成功", "data": {"access_token": access_token, "token_type": "bearer"}}
 
 
 @router.post("/logout")
@@ -86,16 +89,21 @@ async def logout(
     current_user: models.User = Depends(get_current_user),
 ):
     """用户登出"""
+    if not current_user:
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
+    
     # 将token加入黑名单
     RedisService.blacklist_token(token)
     RedisService.delete_token(current_user.id)
-    return {"message": "Successfully logged out"}
+    return {"code": 200, "message": "登出成功", "data": None}
 
 
-@router.get("/me", response_model=schemas.UserResponse)
+@router.get("/me")
 async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
-    return current_user
+    if not current_user:
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
+    return {"code": 200, "message": "获取成功", "data": current_user}
 
 
 @router.put("/password")
@@ -105,19 +113,20 @@ async def update_password(
     current_user: models.User = Depends(get_current_user),
 ):
     """修改密码"""
+    if not current_user:
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
+    
     # 验证旧密码
     if not services.AuthService.verify_password(
         password_update.old_password, current_user.hashed_password
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect old password"
-        )
+        return {"code": 400, "message": "Incorrect old password", "data": None}
 
     # 更新密码
     await services.AuthService.update_password(
         db, current_user.id, password_update.new_password
     )
-    return {"message": "Password updated successfully"}
+    return {"code": 200, "message": "密码修改成功", "data": None}
 
 
 @router.put("/forgetpwd")
@@ -132,13 +141,20 @@ async def forget_password(
     current_user = result.scalar_one_or_none()
     
     if not current_user:
-        return {"message": "User not found","code":400,"data":None}
+        return {"code": 400, "message": "用户不存在", "data": None}
 
-
-    # 发送新密码到用户邮箱
-    await send_text_email(
-        to_email=current_user.email,
-        subject="忘记密码邮件",
-        body=f"您的新密码是{current_user.hashed_password}",
-    )
-    return {"message": "Password has been sent to your email address","code":200,"data":current_user}
+    # 直接返回用户信息（包含密码），不发送邮件
+    return {"code": 200, "message": "查询成功", "data": {
+        "id": current_user.id,
+        "username": current_user.username,
+        "email": current_user.email,
+        "password": current_user.hashed_password,
+        "is_superuser": current_user.is_superuser
+    }}
+    # # 发送新密码到用户邮箱
+    # await send_text_email(
+    #     to_email=current_user.email,
+    #     subject="忘记密码邮件",
+    #     body=f"您的新密码是{current_user.hashed_password}",
+    # )
+    # return {"message": "Password has been sent to your email address","code":200,"data":current_user}

@@ -87,7 +87,7 @@ async def delete_test_miles(db: AsyncSession, miles_id: int):
 from sqlalchemy import func
 
 
-async def get_version_mileage(db: AsyncSession, project: str = None):
+async def get_version_mileage(db: AsyncSession, project: str = None, test_version: str = None, test_function: str = None, start_date: str = None, end_date: str = None):
     """获取版本里程统计"""
     stmt = select(
         models.TestMiles.test_version.label('version'),
@@ -96,6 +96,14 @@ async def get_version_mileage(db: AsyncSession, project: str = None):
     
     if project:
         stmt = stmt.where(models.TestMiles.project == project)
+    if test_version:
+        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+    if test_function:
+        stmt = stmt.where(models.TestMiles.test_function == test_function)
+    if start_date:
+        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+    if end_date:
+        stmt = stmt.where(models.TestMiles.test_time <= end_date)
     
     stmt = stmt.group_by(models.TestMiles.test_version).order_by(func.sum(models.TestMiles.mileage).desc())
     
@@ -103,7 +111,7 @@ async def get_version_mileage(db: AsyncSession, project: str = None):
     return [{"version": row.version or "未分类", "total_mileage": float(row.total_mileage or 0)} for row in result.all()]
 
 
-async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
+async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None, test_version: str = None, test_function: str = None):
     """获取每日里程统计"""
     stmt = select(
         func.date(models.TestMiles.test_time).label('date'),
@@ -112,6 +120,10 @@ async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: 
     
     if project:
         stmt = stmt.where(models.TestMiles.project == project)
+    if test_version:
+        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+    if test_function:
+        stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
         stmt = stmt.where(models.TestMiles.test_time >= start_date)
     if end_date:
@@ -123,7 +135,7 @@ async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: 
     return [{"date": str(row.date), "total_mileage": float(row.total_mileage or 0)} for row in result.all()]
 
 
-async def get_function_mileage(db: AsyncSession, project: str = None):
+async def get_function_mileage(db: AsyncSession, project: str = None, test_version: str = None, test_function: str = None, start_date: str = None, end_date: str = None):
     """获取功能里程统计"""
     stmt = select(
         models.TestMiles.test_function.label('function'),
@@ -132,6 +144,14 @@ async def get_function_mileage(db: AsyncSession, project: str = None):
     
     if project:
         stmt = stmt.where(models.TestMiles.project == project)
+    if test_version:
+        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+    if test_function:
+        stmt = stmt.where(models.TestMiles.test_function == test_function)
+    if start_date:
+        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+    if end_date:
+        stmt = stmt.where(models.TestMiles.test_time <= end_date)
     
     stmt = stmt.group_by(models.TestMiles.test_function).order_by(func.sum(models.TestMiles.mileage).desc())
     
@@ -139,12 +159,12 @@ async def get_function_mileage(db: AsyncSession, project: str = None):
     return [{"function": row.function or "未分类", "total_mileage": float(row.total_mileage or 0)} for row in result.all()]
 
 
-async def get_mileage_stats(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
+async def get_mileage_stats(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None, test_version: str = None, test_function: str = None):
     """获取里程统计数据（包含所有统计信息）"""
-    version_mileage = await get_version_mileage(db, project)
-    daily_mileage = await get_daily_mileage(db, start_date, end_date, project)
-    function_mileage = await get_function_mileage(db, project)
-    overview = await get_mileage_overview(db, start_date, end_date, project)
+    version_mileage = await get_version_mileage(db, project, test_version, test_function, start_date, end_date)
+    daily_mileage = await get_daily_mileage(db, start_date, end_date, project, test_version, test_function)
+    function_mileage = await get_function_mileage(db, project, test_version, test_function, start_date, end_date)
+    overview = await get_mileage_overview(db, start_date, end_date, project, test_version, test_function)
     
     return {
         "overview": overview,
@@ -154,17 +174,21 @@ async def get_mileage_stats(db: AsyncSession, start_date: str = None, end_date: 
     }
 
 
-async def get_mileage_overview(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
+async def get_mileage_overview(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None, test_version: str = None, test_function: str = None):
     """获取里程总览统计（总记录数、总里程、NAP、CNAP）"""
     stmt = select(
         func.count(models.TestMiles.id).label('total_records'),
         func.sum(models.TestMiles.mileage).label('total_mileage'),
-        func.sum(func.IF(models.TestMiles.is_kpi == True, models.TestMiles.mileage, 0)).label('nap'),
-        func.sum(func.IF(models.TestMiles.is_kpi == False, models.TestMiles.mileage, 0)).label('cnap')
+        func.sum(func.IF(models.TestMiles.test_function == 'NAP', models.TestMiles.mileage, 0)).label('nap'),
+        func.sum(func.IF(models.TestMiles.test_function == 'CNAP', models.TestMiles.mileage, 0)).label('cnap')
     )
     
     if project:
         stmt = stmt.where(models.TestMiles.project == project)
+    if test_version:
+        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+    if test_function:
+        stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
         stmt = stmt.where(models.TestMiles.test_time >= start_date)
     if end_date:

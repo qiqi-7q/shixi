@@ -1,11 +1,10 @@
 from datetime import datetime
 
-# from app.plugins.test_record_plugin.models import ProblemCategory, ProblemPhenomenon, TakeoverType
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
-from app.plugins.test_record_plugin.models import FunctionMode
+from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
 
 
 # 基础模型
@@ -14,8 +13,8 @@ class TestRecordBase(BaseModel):
     car_type: str
     function_mode: Optional[FunctionMode] = None
     problem_desc: Optional[str] = None
-    problem_category: Optional[str] = None
-    kpi_type: Optional[str] = None
+    problem_category: Optional[EvaluationDimension] = None
+    kpi_type: Optional[KPIType] = None
     problem_scene: Optional[str] = None
     problem_type: Optional[str] = None
     problem_phenomenon: Optional[str] = None
@@ -29,7 +28,6 @@ class TestRecordBase(BaseModel):
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None
-    # custom_fields: Optional[Dict[str, Any]] = None  # 自定义字段
 
 
 # 创建
@@ -43,9 +41,9 @@ class TestRecordUpdate(BaseModel):
     car_type: Optional[str] = None
     function_mode: Optional[FunctionMode] = None
     problem_desc: Optional[str] = None
-    problem_category: Optional[str] = None
+    problem_category: Optional[EvaluationDimension] = None
     vin_code: Optional[str] = None
-    kpi_type: Optional[str] = None
+    kpi_type: Optional[KPIType] = None
     problem_scene: Optional[str] = None
     problem_type: Optional[str] = None
     problem_phenomenon: Optional[str] = None
@@ -58,7 +56,6 @@ class TestRecordUpdate(BaseModel):
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None
-    # custom_fields: Optional[Dict[str, Any]] = None
 
 
 # 批量导入模型
