@@ -54,7 +54,7 @@ class AuthService:
         if db_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already registered"
+                detail="账号已存在"
             )
 
         # # 检查邮箱是否已存在

@@ -80,7 +80,7 @@ async def login(
         user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
-    return {"code": 200, "message": "登录成功", "data": {"access_token": access_token, "token_type": "bearer"}}
+    return {"code": 200, "message": "登录成功", "data": {"username": user.username, "access_token": access_token, "token_type": "bearer"}}
 
 
 @router.post("/logout")
@@ -95,7 +95,7 @@ async def logout(
     # 将token加入黑名单
     RedisService.blacklist_token(token)
     RedisService.delete_token(current_user.id)
-    return {"code": 200, "message": "登出成功", "data": None}
+    return {"code": 200, "message": "登出成功", "data": current_user.username}
 
 
 @router.get("/me")
@@ -126,7 +126,7 @@ async def update_password(
     await services.AuthService.update_password(
         db, current_user.id, password_update.new_password
     )
-    return {"code": 200, "message": "密码修改成功", "data": None}
+    return {"code": 200, "message": "密码修改成功", "data": current_user}
 
 
 @router.put("/forgetpwd")
