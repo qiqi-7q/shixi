@@ -5,7 +5,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_record_plugin import models, schemas
-from app.plugins.test_record_plugin.models import FunctionMode
+from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
 from app.utils.handle_excel_testrecord import handle_excel_some
 
 
@@ -36,6 +36,8 @@ async def get_test_records(
     project: Optional[str] = None,
     car_type: Optional[str] = None,
     function_mode: Optional[FunctionMode] = None,
+    problem_category: Optional[EvaluationDimension] = None,
+    kpi_type: Optional[KPIType] = None,
 ):
     stmt = select(models.TestRecord)
     if project:
@@ -44,6 +46,10 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.car_type == car_type)
     if function_mode:
         stmt = stmt.filter(models.TestRecord.function_mode == function_mode)
+    if problem_category:
+        stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
+    if kpi_type:
+        stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
     stmt = stmt.offset(skip).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())

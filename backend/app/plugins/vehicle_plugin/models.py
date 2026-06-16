@@ -6,7 +6,7 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 
-
+#数据库存储的以及前端传递的都是英文，返回给前端的是中文
 class VehicleStatus(str, enum.Enum):
     AVAILABLE = "可借用"
     BORROWED = "已借出"
@@ -52,6 +52,7 @@ class Vehicle(Base):
     vin_code = Column(
         String(17), unique=True, index=True, nullable=False, comment="VIN码"
     )
+    
     engine_num = Column(String(100), comment="驱动电机号/发动机号")
     plate_number = Column(String(20), nullable=False, comment="车牌号")
     temp_plate_expire_date = Column(Date, comment="临牌到期时间")
@@ -84,7 +85,7 @@ class BorrowRecord(Base):
     record_creator = Column(String(50), comment="记录创建人")
     created_at = Column(Date, server_default=func.now(), comment="创建时间")
     borrow_status = Column(
-        String(20), default="active", comment="借用状态：active/returned/cancelled"
+        String(20), default="active", comment="借用状态"
     )
     updated_at = Column(
         Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"

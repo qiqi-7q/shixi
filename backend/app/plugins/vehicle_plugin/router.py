@@ -22,26 +22,42 @@ async def get_vehicle_overview(
         group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
         vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
         test_status: Optional[str] = Query(None, description="测试状态"),
+        start_date: Optional[str] = Query(None, description="统计起始日期（格式：YYYY-MM-DD）"),
+        end_date: Optional[str] = Query(None, description="统计截止日期（格式：YYYY-MM-DD）"),
 ):
     """获取车辆概览统计（卡片数据）"""
     stats = await services.VehicleStatsService.get_vehicle_overview(
-        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, 
+        test_status=test_status, start_date=start_date, end_date=end_date
     )
     return {"data": stats, "message": "success", "code": 200}
 
 
-@router.get("/stats/model_distribution")
-async def get_model_distribution(
+@router.get("/stats/utilization")
+async def get_vehicle_utilization(
         db: AsyncSession = Depends(get_db),
-        model: Optional[str] = Query(None, description="车型"),
-        vin_code: Optional[str] = Query(None, description="VIN码"),
+        model: Optional[str] = Query(None, description="车型（模糊匹配）"),
+        vin_code: Optional[str] = Query(None, description="VIN码（模糊匹配）"),
         group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
         vehicle_status: Optional[str] = Query(None, description="车辆状态（可借用/已借出/维护中）"),
         test_status: Optional[str] = Query(None, description="测试状态"),
+        start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
+        end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)")
 ):
-    """获取车型分布统计（柱状图）"""
-    data = await services.VehicleStatsService.get_model_distribution(
-        db, model=model, vin_code=vin_code, group=group, vehicle_status=vehicle_status, test_status=test_status
+    """获取每辆车的借用次数统计
+    统计逻辑：
+    - 每辆车的借用次数：同一车辆同一天多次借用只算一次
+    - 占比：该车借用次数 / 总借用次数 * 100%
+    """
+    data = await services.VehicleStatsService.get_vehicle_utilization(
+        db, 
+        model=model, 
+        vin_code=vin_code,
+        group=group,
+        vehicle_status=vehicle_status,
+        test_status=test_status,
+        start_date=start_date, 
+        end_date=end_date
     )
     return {"data": data, "message": "success", "code": 200}
 
@@ -63,6 +79,10 @@ async def get_status_distribution(
 
 
 # ============= 列表路由 =============
+# 时间字段只支持 between/not_between 操作符
+TIME_FIELDS = {"created_at", "updated_at"}
+
+
 @router.post("/advsearch")
 async def get_vehicles(
         skip: int = Query(0, ge=0),
@@ -72,20 +92,36 @@ async def get_vehicles(
 ):
     """获取车辆列表（高级查询）"""
 
-    if not conditions:
-        return {"message": "高级查询信息无效", "code": 400}
+    if conditions:
+        for cond in conditions:
+            field_name = cond["advanced_field"]
+            operator = cond["advanced_operator"]
 
-    for cond in conditions:
-        if cond["advanced_field"] not in schemas.VEHICLE_WHITELIST:
-            return {
-                "message": f"无效的字段: {cond['advanced_field']} ",
-                "code": 400,
-            }
-        if cond["advanced_operator"] not in settings.ADVANCED_OPERATORS:
-            return {
-                "message": f"无效的操作: {cond['advanced_operator']} ",
-                "code": 400,
-            }
+            # 时间字段只支持 between/not_between 操作符
+            if field_name in TIME_FIELDS and operator not in ("between", "not_between"):
+                return {
+                    "message": f"时间字段 {field_name} 只支持 between/not_between 操作符",
+                    "code": 400,
+                }
+
+            # between/not_between 的值必须是数组
+            if operator in ("between", "not_between"):
+                if not isinstance(cond.get("advanced_value"), list) or len(cond["advanced_value"]) != 2:
+                    return {
+                        "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
+                        "code": 400,
+                    }
+
+            if field_name not in schemas.VEHICLE_WHITELIST:
+                return {
+                    "message": f"无效的字段: {field_name} ",
+                    "code": 400,
+                }
+            if operator not in settings.ADVANCED_OPERATORS:
+                return {
+                    "message": f"无效的操作: {operator} ",
+                    "code": 400,
+                }
 
     vehicleData = await services.VehicleService.get_vehicles(
         db,
@@ -100,11 +136,12 @@ async def get_vehicles(
 async def get_vehicles_simple(
         skip: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=1000),
-        vehicle_status: Optional[models.VehicleStatus] = None,
+        vehicle_status: Optional[str] = None,
         vin_code: Optional[str] = None,
-        group: Optional[models.VehicleGroup] = None,
+        group: Optional[str] = None,
         model: Optional[str] = None,
-        db: AsyncSession = Depends(get_db),
+        test_status: Optional[str] = None,
+        db: AsyncSession = Depends(get_db)
 ):
     """获取车辆列表（固定字段查询）"""
     vehicleData = await services.VehicleService.get_vehicles_simple(
@@ -115,6 +152,7 @@ async def get_vehicles_simple(
         vehicle_status=vehicle_status,
         vin_code=vin_code,
         model=model,
+        test_status=test_status
     )
 
     return {"data": vehicleData, "message": "success", "code": 200}
@@ -233,6 +271,7 @@ async def get_borrow_records_simple(
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
         db: AsyncSession = Depends(get_db),
+        driver_name: Optional[str] = None
 ):
     """获取借用记录列表"""
     records = await services.BorrowService.get_borrow_records_simple(
@@ -242,8 +281,13 @@ async def get_borrow_records_simple(
         model=model,
         vin_code=vin_code,
         borrow_status=borrow_status,
+        driver_name=driver_name
     )
     return {"data": records, "message": "success", "code": 200}
+
+
+# 借用记录时间字段
+BORROW_TIME_FIELDS = {"created_at", "updated_at", "borrow_time"}
 
 
 @borrow_router.post("/advsearch")
@@ -253,22 +297,42 @@ async def get_borrow_records(
         conditions: Optional[List[dict]] = None,
         db: AsyncSession = Depends(get_db),
 ):
-    if not conditions:
-        return {"message": "无效的高级查询条件", "code": 400, "data": None}
+    """获取借用记录列表（高级查询）"""
 
-    for cond in conditions:
-        if cond["advanced_field"] not in schemas.BORROW_WHITELIST:
-            return {
-                "message": f"无效的字段: {cond['advanced_field']} ",
-                "code": 400,
-                "data": None,
-            }
-        if cond["advanced_operator"] not in settings.ADVANCED_OPERATORS:
-            return {
-                "message": f"无效的操作: {cond['advanced_operator']} ",
-                "code": 400,
-                "data": None,
-            }
+    if conditions:
+        for cond in conditions:
+            field_name = cond["advanced_field"]
+            operator = cond["advanced_operator"]
+
+            # 时间字段只支持 between/not_between 操作符
+            if field_name in BORROW_TIME_FIELDS and operator not in ("between", "not_between"):
+                return {
+                    "message": f"时间字段 {field_name} 只支持 between/not_between 操作符",
+                    "code": 400,
+                    "data": None,
+                }
+
+            # between/not_between 的值必须是数组
+            if operator in ("between", "not_between"):
+                if not isinstance(cond.get("advanced_value"), list) or len(cond["advanced_value"]) != 2:
+                    return {
+                        "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
+                        "code": 400,
+                        "data": None,
+                    }
+
+            if field_name not in schemas.BORROW_WHITELIST:
+                return {
+                    "message": f"无效的字段: {field_name} ",
+                    "code": 400,
+                    "data": None,
+                }
+            if operator not in settings.ADVANCED_OPERATORS:
+                return {
+                    "message": f"无效的操作: {operator} ",
+                    "code": 400,
+                    "data": None,
+                }
 
     records = await services.BorrowService.get_borrow_records(
         db,

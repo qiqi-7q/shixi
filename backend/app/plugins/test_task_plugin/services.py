@@ -32,6 +32,7 @@ async def sync_miles_from_task(db: AsyncSession, task_data: dict):
     project = task_data.get('project')
     vin_code = task_data.get('vin_code')
     test_time = task_data.get('test_time')
+    is_kpi = task_data.get('is_kpi', False)
     
     # 必须有 project 和 vin_code 才能匹配
     if not project or not vin_code:
@@ -59,6 +60,7 @@ async def sync_miles_from_task(db: AsyncSession, task_data: dict):
         existing_miles.mileage = await calculate_mileage(
             task_data.get('test_mileage'), task_data.get('actual_mileage')
         )
+        existing_miles.is_kpi = is_kpi
         existing_miles.remarks = task_data.get('remarks')
     else:
         # 创建新记录
@@ -71,6 +73,7 @@ async def sync_miles_from_task(db: AsyncSession, task_data: dict):
             mileage=await calculate_mileage(
                 task_data.get('test_mileage'), task_data.get('actual_mileage')
             ),
+            is_kpi=is_kpi,
             remarks=task_data.get('remarks')
         )
         db.add(db_miles)
@@ -109,6 +112,7 @@ async def create_test_task(db: AsyncSession, task: schemas.TestTaskCreate):
         "actual_mileage": task.actual_mileage,
         "task_achievement_rate": task_achievement_rate,
         "task_status": task.task_status,
+        "is_kpi": task.is_kpi,
         "reason_desc": task.reason_desc,
         "remarks": task.remarks,
         "created_at": datetime.now(),
@@ -123,6 +127,7 @@ async def create_test_task(db: AsyncSession, task: schemas.TestTaskCreate):
         "test_function": task.test_function,
         "test_mileage": task.test_mileage,
         "actual_mileage": task.actual_mileage,
+        "is_kpi": task.is_kpi,
         "remarks": task.remarks
     }
 
@@ -171,8 +176,9 @@ async def get_test_tasks(
             task_publisher=t.task_publisher, test_mileage=t.test_mileage,
             test_person=t.test_person, actual_mileage=t.actual_mileage,
             task_achievement_rate=t.task_achievement_rate,
-            task_status=t.task_status, reason_desc=t.reason_desc,
-            remarks=t.remarks, created_at=t.created_at, updated_at=t.updated_at
+            task_status=t.task_status, is_kpi=t.is_kpi,
+            reason_desc=t.reason_desc, remarks=t.remarks,
+            created_at=t.created_at, updated_at=t.updated_at
         ) for t in tasks
     ]
     
@@ -198,8 +204,9 @@ async def get_test_task(db: AsyncSession, task_id: int):
         task_publisher=task.task_publisher, test_mileage=task.test_mileage,
         test_person=task.test_person, actual_mileage=task.actual_mileage,
         task_achievement_rate=task.task_achievement_rate,
-        task_status=task.task_status, reason_desc=task.reason_desc,
-        remarks=task.remarks, created_at=task.created_at, updated_at=task.updated_at
+        task_status=task.task_status, is_kpi=task.is_kpi,
+        reason_desc=task.reason_desc, remarks=task.remarks,
+        created_at=task.created_at, updated_at=task.updated_at
     )
 
 
@@ -217,6 +224,7 @@ async def update_test_task(db: AsyncSession, task_id: int, task: schemas.TestTas
     test_function = db_task.test_function
     test_mileage = db_task.test_mileage
     actual_mileage = db_task.actual_mileage
+    is_kpi = db_task.is_kpi
     remarks = db_task.remarks
 
     update_data = task.dict(exclude_unset=True)
@@ -230,6 +238,7 @@ async def update_test_task(db: AsyncSession, task_id: int, task: schemas.TestTas
         elif key == 'test_function': test_function = value
         elif key == 'test_mileage': test_mileage = value
         elif key == 'actual_mileage': actual_mileage = value
+        elif key == 'is_kpi': is_kpi = value
         elif key == 'remarks': remarks = value
 
     task_achievement_rate = await calculate_achievement_rate(
@@ -247,6 +256,7 @@ async def update_test_task(db: AsyncSession, task_id: int, task: schemas.TestTas
         "test_function": test_function,
         "test_mileage": test_mileage,
         "actual_mileage": actual_mileage,
+        "is_kpi": is_kpi,
         "remarks": remarks
     }
     await sync_miles_from_task(db, task_data)
@@ -263,8 +273,9 @@ async def update_test_task(db: AsyncSession, task_id: int, task: schemas.TestTas
         task_publisher=updated_task.task_publisher, test_mileage=updated_task.test_mileage,
         test_person=updated_task.test_person, actual_mileage=updated_task.actual_mileage,
         task_achievement_rate=updated_task.task_achievement_rate,
-        task_status=updated_task.task_status, reason_desc=updated_task.reason_desc,
-        remarks=updated_task.remarks, created_at=updated_task.created_at, updated_at=updated_task.updated_at
+        task_status=updated_task.task_status, is_kpi=updated_task.is_kpi,
+        reason_desc=updated_task.reason_desc, remarks=updated_task.remarks,
+        created_at=updated_task.created_at, updated_at=updated_task.updated_at
     )
 
 

@@ -87,7 +87,7 @@ class BorrowRecordBase(BaseModel):
     )
     record_creator: Optional[str] = Field(None, max_length=50, description="记录创建人")
     borrow_status: Optional[str] = Field(
-        None, max_length=20, description="借用状态：active/returned/cancelled"
+        None, max_length=20, description="借用状态"
     )
     remarks: Optional[str] = Field(None, description="备注")
 

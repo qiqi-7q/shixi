@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     # SMTP 端口（465 是 SSL 安全端口）
     MAIL_PORT: int = 465
     
+    ADVANCED_OPERATORS_MAP: dict = {
+        # 高级搜索支持的操作符（使用 SQLAlchemy 正确语法）
+        "icontains": lambda x, y: x.ilike(f"%{y}%"),  # 包含（不区分大小写）
+        "eq": lambda x, y: x == y,                # 等于
+        "not_eq": lambda x, y: x != y,             # 不等于
+        "startswith": lambda x, y: x.like(f"{y}%"),   # 开头是
+        "endswith": lambda x, y: x.like(f"%{y}"),     # 结尾是
+        "between": lambda x, y: x.between(y[0], y[1]),  # 在范围内（y是数组）
+        "not_between": lambda x, y: ~(x.between(y[0], y[1])),  # 不在范围内
+    }
+
+    # 支持的操作符列表（用于接口验证）
+    ADVANCED_OPERATORS: set[str] = {
+        "icontains", "eq", "not_eq", "startswith", "endswith", "between", "not_between"
+    }
 
     class Config:
         env_file = ".env"

@@ -57,21 +57,27 @@ async def delete_miles(miles_id: int, db: AsyncSession = Depends(get_db)):
 async def get_mileage_stats(
     start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
     end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
-    project: str = Query(None, description="按项目筛选"),
+    project: str = Query(None, description="按项目名称筛选"),
+    test_version: str = Query(None, description="按测试版本筛选（模糊匹配）"),
+    test_function: str = Query(None, description="按测试功能筛选"),
     db: AsyncSession = Depends(get_db)
 ):
-    """获取里程统计数据"""
-    result = await services.get_mileage_stats(db, start_date=start_date, end_date=end_date, project=project)
+    """获取里程统计数据（包含总览、版本、每日、功能统计）"""
+    result = await services.get_mileage_stats(db, start_date=start_date, end_date=end_date, project=project, test_version=test_version, test_function=test_function)
     return {"code": 200, "data": result, "message": "获取里程统计数据成功"}
 
 
 @router.get("/stats/version")
 async def get_version_mileage(
-    project: str = Query(None, description="按项目筛选"),
+    project: str = Query(None, description="按项目名称筛选"),
+    test_version: str = Query(None, description="按测试版本筛选（模糊匹配）"),
+    test_function: str = Query(None, description="按测试功能筛选"),
+    start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
+    end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
     db: AsyncSession = Depends(get_db)
 ):
     """获取版本里程统计"""
-    result = await services.get_version_mileage(db, project)
+    result = await services.get_version_mileage(db, project=project, test_version=test_version, test_function=test_function, start_date=start_date, end_date=end_date)
     return {"code": 200, "data": {"version_mileage": result}, "message": "获取版本里程统计成功"}
 
 
@@ -79,19 +85,25 @@ async def get_version_mileage(
 async def get_daily_mileage(
     start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
     end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
-    project: str = Query(None, description="按项目筛选"),
+    project: str = Query(None, description="按项目名称筛选"),
+    test_version: str = Query(None, description="按测试版本筛选（模糊匹配）"),
+    test_function: str = Query(None, description="按测试功能筛选"),
     db: AsyncSession = Depends(get_db)
 ):
     """获取每日里程统计"""
-    result = await services.get_daily_mileage(db, start_date, end_date, project)
+    result = await services.get_daily_mileage(db, start_date=start_date, end_date=end_date, project=project, test_version=test_version, test_function=test_function)
     return {"code": 200, "data": {"daily_mileage": result}, "message": "获取每日里程统计成功"}
 
 
 @router.get("/stats/function")
 async def get_function_mileage(
-    project: str = Query(None, description="按项目筛选"),
+    project: str = Query(None, description="按项目名称筛选"),
+    test_version: str = Query(None, description="按测试版本筛选（模糊匹配）"),
+    test_function: str = Query(None, description="按测试功能筛选"),
+    start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
+    end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
     db: AsyncSession = Depends(get_db)
 ):
     """获取功能里程统计"""
-    result = await services.get_function_mileage(db, project)
+    result = await services.get_function_mileage(db, project=project, test_version=test_version, test_function=test_function, start_date=start_date, end_date=end_date)
     return {"code": 200, "data": {"function_mileage": result}, "message": "获取功能里程统计成功"}
