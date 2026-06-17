@@ -13,11 +13,9 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     print("Starting up...")
     # 测试Redis连接
-    try:
-        await redisserve.ping()
-        print("Redis connected successfully")
-    except Exception as e:
-        print(f"Redis connection failed: {e}")
+    result = await redisserve.conn_ping()
+    print(result)
+
 
     # 注册插件
     await plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
@@ -36,6 +34,7 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin("test_miles", "app.plugins.test_miles_plugin.plugin")
     await plugin_manager.register_plugin("test_task", "app.plugins.test_task_plugin.plugin")
     await plugin_manager.register_plugin("data_analysis", "app.plugins.data_analysis_plugin.plugin")
+    await plugin_manager.register_plugin("project_progress", "app.plugins.project_progress_plugin.plugin")
 
 
 

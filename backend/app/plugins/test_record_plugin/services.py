@@ -1,7 +1,7 @@
 from typing import List, Optional, Set, Tuple
 
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_record_plugin import models, schemas
@@ -50,9 +50,19 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
-    stmt = stmt.offset(skip).limit(limit)
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    return {
+        "items": result.scalars().all(),
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 
 # 获取单条

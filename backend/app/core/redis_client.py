@@ -38,5 +38,13 @@ class RedisService:
         key = f"blacklist:{token}"
         return await self.redis_client.exists(key) == 1
 
+    async def conn_ping(self) -> str:
+        """检查Redis连接是否正常"""
+        try:
+            await self.redis_client.ping()
+            return "Redis连接成功"
+        except Exception as e:
+            return f"Redis连接异常: {str(e)}"
+
 
 redisserve = RedisService()

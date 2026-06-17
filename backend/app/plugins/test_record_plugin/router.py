@@ -23,7 +23,7 @@ async def create_record(
 
 
 # 2. 获取列表
-@router.get("/fixsearch", response_model=list[schemas.TestRecord])
+@router.get("/fixsearch")
 async def get_records(
     skip: int = 0,
     limit: int = 100,
@@ -34,7 +34,7 @@ async def get_records(
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
 ):
-    records = await services.get_test_records(
+    result = await services.get_test_records(
         db,
         skip=skip,
         limit=limit,
@@ -44,11 +44,11 @@ async def get_records(
         problem_category=problem_category,
         kpi_type=kpi_type,
     )
-    return {"message": "success", "code": 200, "data": records}
+    return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
 
 
 # 3. 获取单条详情
-@router.get("/getrecord/{record_id}", response_model=schemas.TestRecord)
+@router.get("/getrecord/{record_id}")
 async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
     record = await services.get_test_record(db, record_id=record_id)
     if isinstance(record, str):
@@ -57,7 +57,7 @@ async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
 
 
 # 4. 更新
-@router.put("/updaterecord/{record_id}", response_model=schemas.TestRecord)
+@router.put("/updaterecord/{record_id}")
 async def update_record(
     record_id: int, record: schemas.TestRecordUpdate, db: AsyncSession = Depends(get_db)
 ):

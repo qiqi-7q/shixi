@@ -80,7 +80,7 @@ async def login(
         user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
-    return {"code": 200, "message": "登录成功", "data": {"username": user.username, "access_token": access_token, "token_type": "bearer"}}
+    return {"code": 200, "message": "登录成功", "data": {"username": user.username,"full_name": user.full_name, "access_token": access_token, "token_type": "bearer"}}
 
 
 @router.post("/logout")
@@ -95,7 +95,7 @@ async def logout(
     # 将token加入黑名单
     RedisService.blacklist_token(token)
     RedisService.delete_token(current_user.id)
-    return {"code": 200, "message": "登出成功", "data": current_user.username}
+    return {"code": 200, "message": "登出成功", "data": current_user.full_name}
 
 
 @router.get("/me")
@@ -147,6 +147,7 @@ async def forget_password(
     return {"code": 200, "message": "查询成功", "data": {
         "id": current_user.id,
         "username": current_user.username,
+        "full_name": current_user.full_name,
         "email": current_user.email,
         "password": current_user.hashed_password,
         "is_superuser": current_user.is_superuser
