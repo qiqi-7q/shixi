@@ -804,6 +804,18 @@ class DataAnalysis:
             return "统计数据不存在，请检查ID是否正确"
         
         return [analysis_info1, analysis_info2]
+    
+    @staticmethod
+    async def delete_analysis_data(db: AsyncSession, analysis_id: int):
+        if not analysis_id:
+            return "分析数据ID不能为空"
+        stmt = await db.get(KpiMain, analysis_id)
+        if not stmt:
+            return "分析数据不存在"
+        stmt.is_del = True
+        await db.commit()
+        await db.refresh(stmt)
+        return "success"
 
 
 # ====================== 可视化统计接口 ======================
@@ -861,7 +873,7 @@ async def get_version_stats(db: AsyncSession, project: str = None, carModel: str
         stmt = stmt.filter(KpiMain.funcMode == funcMode)
     
     stmt = stmt.group_by(KpiMain.project, KpiMain.carModel, KpiMain.version, KpiMain.funcMode) \
-               .order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
+            .order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
     
     result = await db.execute(stmt)
     return [{
@@ -873,19 +885,6 @@ async def get_version_stats(db: AsyncSession, project: str = None, carModel: str
         "total_mileage": round(float(row.total_mileage or 0), 2),
         "record_count": int(row.record_count or 0)
     } for row in result.all()]
-
-
-    @staticmethod
-    async def delete_analysis_data(db: AsyncSession, analysis_id: int):
-        if not analysis_id:
-            return "分析数据ID不能为空"
-        stmt = await db.get(KpiMain, analysis_id)
-        if not stmt:
-            return "分析数据不存在"
-        stmt.is_del = True
-        await db.commit()
-        await db.refresh(stmt)
-        return "success"
 
 
 # 实例化

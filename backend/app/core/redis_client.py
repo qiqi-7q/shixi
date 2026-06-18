@@ -1,4 +1,4 @@
-from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio import Redis
 
 from app.core.config import settings
 
@@ -6,12 +6,20 @@ from app.core.config import settings
 class RedisService:
 
     def __init__(self):
-        self.redis_pool = ConnectionPool.from_url(
-            f"{settings.REDIS_URL}{settings.REDIS_DB}"
-        )
-        self.redis_client = Redis(
-            connection_pool=self.redis_pool, decode_responses=True, max_connections=30
-        )
+        # 使用 RESP2 协议，解决 Redis 7+ 的 HELLO 认证问题
+        connection_kwargs = {
+            "host": settings.REDIS_HOST,
+            "port": settings.REDIS_PORT,
+            "db": settings.REDIS_DB,
+            "decode_responses": True,
+            "max_connections": 30,
+            "protocol": 2,  # 强制使用 RESP2 协议
+        }
+        
+        if settings.REDIS_PASSWORD:
+            connection_kwargs["password"] = settings.REDIS_PASSWORD
+        
+        self.redis_client = Redis(**connection_kwargs)
 
     async def set_token(self, user_id: int, token: str, expire_seconds: int = 1800):
         """存储用户token到Redis"""

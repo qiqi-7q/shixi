@@ -1,7 +1,7 @@
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import xlsxwriter
@@ -84,16 +84,14 @@ async def delete_record(record_id: int, db: AsyncSession = Depends(get_db)):
 # 6. 批量本地数据导入（核心功能）
 @router.post("/batch_import")
 async def batch_import(
-    # data: schemas.TestRecordBatchImport,
-    path: str = Query(..., description="Excel文件的本地绝对路径"),
+    file: UploadFile = File(..., description="Excel文件（.xlsx格式）"),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    批量本地数据导入
-    请求体：{"records": [测试记录对象1, 测试记录对象2...]}
+    批量导入测试记录（文件上传）
+    上传Excel文件，批量导入测试记录数据。自动进行数据去重、格式校验和批量写入。
     """
-    # return services.batch_import_records(db, data.records)
-    result = await services.batch_import_records(path, db)
+    result = await services.batch_import_records(file, db)
     return result
 
 
@@ -106,6 +104,7 @@ async def batch_export(
     function_mode: Optional[FunctionMode] = Query(None, description="功能模式筛选"),
     problem_category: Optional[EvaluationDimension] = Query(None, description="评价维度筛选"),
     kpi_type: Optional[KPIType] = Query(None, description="KPI类型筛选"),
+    record_ids: Optional[str] = Query(None, description="指定记录ID列表，用逗号分隔，如: 1,2,3"),
 ):
     """
     批量导出测试记录到Excel文件
@@ -114,8 +113,17 @@ async def batch_export(
     :param function_mode: 功能模式筛选条件
     :param problem_category: 评价维度筛选条件
     :param kpi_type: KPI类型筛选条件
+    :param record_ids: 指定记录ID列表（优先使用），逗号分隔
     :return: Excel文件流
     """
+    # 解析record_ids参数
+    id_list = None
+    if record_ids:
+        try:
+            id_list = [int(id.strip()) for id in record_ids.split(",") if id.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="record_ids参数格式错误，应为逗号分隔的数字列表")
+    
     # 查询数据
     export_data = await services.batch_export_records(
         db,
@@ -124,6 +132,7 @@ async def batch_export(
         function_mode=function_mode,
         problem_category=problem_category,
         kpi_type=kpi_type,
+        record_ids=id_list,
     )
 
     if not export_data:

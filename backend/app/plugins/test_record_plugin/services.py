@@ -1,7 +1,7 @@
 from typing import List, Optional, Set, Tuple
 import os
 import json
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,7 @@ from app.plugins.test_record_plugin import models, schemas
 from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
 from app.plugins.test_record_plugin.client import APIClient
 from app.utils.handle_excel_testrecord import handle_excel_some
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date, time, timezone, timedelta
 
 
 # 创建
@@ -157,6 +157,9 @@ def generate_unique_key(data_dict: dict) -> Tuple:
     for field in REPEAT_CHECK_FIELDS:
         # 处理空值，确保None和空字符串的一致性
         value = data_dict.get(field)
+        # 处理datetime对象，转换为统一的字符串格式
+        if isinstance(value, (datetime, date, time)):
+            value = value.strftime("%Y-%m-%d %H:%M:%S")
         if isinstance(value, str):
             value = value.strip()
         key_values.append(value)
@@ -167,134 +170,177 @@ def generate_unique_key(data_dict: dict) -> Tuple:
 # -----------------------------------------------------------------------------
 
 
-async def batch_import_records(file_path: str, db: AsyncSession):
+async def batch_import_records(file, db: AsyncSession):
     # 1. 入口参数强制校验
-    if not isinstance(file_path, str):
-        return f"第一个参数必须是文件路径字符串，实际收到：{type(file_path)}"
+    # 使用 duck typing 检查，避免类型导入问题
+    if not hasattr(file, 'filename') or not hasattr(file, 'read'):
+        return f"第一个参数必须是UploadFile对象，实际收到：{type(file)}"
     if not isinstance(db, AsyncSession):
         return f"第二个参数必须是数据库Session对象，实际收到：{type(db)}"
 
-    # 2. 读取Excel文件：自动过滤全空行
+    # 2. 保存上传的文件到临时目录
+    import tempfile
+    import os
+    from pathlib import Path
+
+    # 创建临时文件
+    temp_dir = tempfile.gettempdir()
+    temp_file_path = os.path.join(temp_dir, f"temp_import_{file.filename}")
+
     try:
-        excel_records, headers = handle_excel_some(file_path)
-        total_excel_rows = len(excel_records)
-    # except ExcelHandleError as e:
-    #     raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        return f"Excel数据处理失败：{str(e)}"
+        # 保存上传的文件内容到临时文件
+        with open(temp_file_path, "wb") as temp_file:
+            content = await file.read()
+            temp_file.write(content)
 
-    # 2.5 转换枚举字段：将英文名称转换为中文值（数据库存储的是枚举名称，Pydantic验证需要枚举值）
-    for record in excel_records:
-        # 转换 problem_category
-        if 'problem_category' in record and record['problem_category']:
-            pc_value = record['problem_category'].strip().upper()
-            if pc_value in EvaluationDimension.__members__:
-                record['problem_category'] = EvaluationDimension[pc_value].value
+        # 2. 读取Excel文件：自动过滤全空行
+        try:
+            excel_records, headers = handle_excel_some(temp_file_path)
+            total_excel_rows = len(excel_records)
+        except Exception as e:
+            return f"Excel数据处理失败：{str(e)}"
 
-        # 转换 kpi_type
-        if 'kpi_type' in record and record['kpi_type']:
-            kt_value = record['kpi_type'].strip().upper()
-            if kt_value in KPIType.__members__:
-                record['kpi_type'] = KPIType[kt_value].value
+        # 2.5 转换枚举字段：将英文名称转换为中文值（数据库存储的是枚举名称，Pydantic验证需要枚举值）
+        for record in excel_records:
+            # 转换 problem_category
+            if 'problem_category' in record and record['problem_category']:
+                pc_value = record['problem_category'].strip().upper()
+                if pc_value in EvaluationDimension.__members__:
+                    record['problem_category'] = EvaluationDimension[pc_value].value
 
-    # 3. 第一重去重：内存去重，过滤Excel内的重复数据
-    unique_records: List[dict] = []
-    seen_keys: Set[Tuple] = set()
-    excel_duplicate_count = 0
+            # 转换 kpi_type
+            if 'kpi_type' in record and record['kpi_type']:
+                kt_value = record['kpi_type'].strip().upper()
+                if kt_value in KPIType.__members__:
+                    record['kpi_type'] = KPIType[kt_value].value
 
-    for record in excel_records:
-        # 生成唯一标识键
-        unique_key = generate_unique_key(record)
-        # 检查是否已经出现过
-        if unique_key in seen_keys:
-            excel_duplicate_count += 1
-            continue
-        # 新数据，加入列表和集合
-        seen_keys.add(unique_key)
-        unique_records.append(record)
+        # 3. 第一重去重：内存去重，过滤Excel内的重复数据
+        unique_records: List[dict] = []
+        seen_keys: Set[Tuple] = set()
+        excel_duplicate_count = 0
 
-    # 4. 第二重去重：数据库去重，过滤已存在的重复数据
-    if not unique_records:
+        for record in excel_records:
+            # 生成唯一标识键
+            unique_key = generate_unique_key(record)
+            # 检查是否已经出现过
+            if unique_key in seen_keys:
+                excel_duplicate_count += 1
+                continue
+            # 新数据，加入列表和集合
+            seen_keys.add(unique_key)
+            unique_records.append(record)
+
+        # 4. 第二重去重：数据库去重，过滤已存在的重复数据
+        if not unique_records:
+            return {
+                "msg": "无有效数据可导入",
+                "total_excel_rows": total_excel_rows,
+                "excel_duplicate_rows": excel_duplicate_count,
+                "db_duplicate_rows": 0,
+                "success_import_rows": 0,
+            }
+
+        # 4.1 批量查询数据库中已存在的重复数据（高性能，无循环请求）
+        # 构建查询条件：所有唯一键的组合
+        query_conditions = []
+        for record in unique_records:
+            # 为每条数据构建字段匹配条件
+            field_conditions = []
+            for field in REPEAT_CHECK_FIELDS:
+                value = record.get(field)
+                if isinstance(value, str):
+                    value = value.strip()
+                # 处理空值：数据库里的NULL和Python的None匹配
+                if value is None:
+                    field_conditions.append(getattr(models.TestRecord, field).is_(None))
+                else:
+                    # 处理时间字段：Excel中是字符串，数据库中是datetime，需要转换后比较
+                    # 使用func.date_format将数据库datetime转换为字符串格式进行比较
+                    if field == 'problem_time' and isinstance(value, str):
+                        field_conditions.append(
+                            func.date_format(getattr(models.TestRecord, field), "%Y-%m-%d %H:%i:%s") == value
+                        )
+                    else:
+                        field_conditions.append(getattr(models.TestRecord, field) == value)
+            # 把单条数据的所有字段条件合并
+            query_conditions.append(and_(*field_conditions))
+
+        # 4.2 执行查询：获取所有已存在的重复数据的唯一键（使用异步方法）
+        stmt = select(models.TestRecord).filter(or_(*query_conditions))
+        result = await db.execute(stmt)
+        existing_records = result.scalars().all()
+
+        existing_keys: Set[Tuple] = set()
+        for record in existing_records:
+            # 把数据库里的记录也转成唯一键，和Excel里的对比
+            record_dict = {field: getattr(record, field) for field in REPEAT_CHECK_FIELDS}
+            existing_key = generate_unique_key(record_dict)
+            existing_keys.add(existing_key)
+
+        # 4.3 过滤掉数据库已存在的重复数据，只保留全新的有效数据
+        final_import_records: List[dict] = []
+        db_duplicate_count = 0
+        for record in unique_records:
+            unique_key = generate_unique_key(record)
+            if unique_key in existing_keys:
+                db_duplicate_count += 1
+                continue
+            final_import_records.append(record)
+
+        # 5. 数据校验：转Pydantic模型，确保格式符合数据库要求
+        valid_records: List[schemas.TestRecordCreate] = []
+        for idx, item_dict in enumerate(final_import_records):
+            try:
+                record = schemas.TestRecordCreate(**item_dict)
+                valid_records.append(record)
+            except Exception as e:
+                # 获取原始Excel行号（如果记录中保存了的话），否则显示当前索引
+                original_row_num = item_dict.get('_original_row_num', idx + 2)
+                raise HTTPException(
+                    status_code=400, detail=f"第{original_row_num}行数据格式错误：{str(e)}"
+                )
+
+        # 6. 批量写入数据库：使用异步方法，事务安全
+        success_count = 0
+        if valid_records:
+            try:
+                for record in valid_records:
+                    db.add(models.TestRecord(**record.dict()))
+                await db.commit()
+                success_count = len(valid_records)
+            except Exception as e:
+                await db.rollback()
+                raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
+
+        # 7. 根据导入结果返回清晰的消息
+        if success_count == total_excel_rows:
+            msg = "全部数据导入成功"
+        elif success_count > 0 and db_duplicate_count > 0:
+            msg = f"导入完成，新增{success_count}条，{db_duplicate_count}条重复已跳过"
+        elif success_count == 0 and db_duplicate_count > 0:
+            msg = "所有数据均已存在，未导入新数据"
+        elif success_count == 0 and total_excel_rows > 0:
+            msg = "数据导入失败，请检查数据格式"
+        else:
+            msg = "批量导入完成"
+
+        # 7. 返回清晰的导入结果（含所有去重统计）
         return {
-            "msg": "无有效数据可导入",
-            "total_excel_rows": total_excel_rows,
-            "excel_duplicate_rows": excel_duplicate_count,
-            "db_duplicate_rows": 0,
-            "success_import_rows": 0,
+            "msg": msg,
+            "total_excel_rows": total_excel_rows,  # Excel读取的有效数据总行数
+            "excel_duplicate_rows": excel_duplicate_count,  # Excel内过滤的重复行数
+            "db_duplicate_rows": db_duplicate_count,  # 数据库已存在的重复行数
+            "success_import_rows": success_count,  # 最终成功上传的新数据行数
+            "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
         }
-
-    # 4.1 批量查询数据库中已存在的重复数据（高性能，无循环请求）
-    # 构建查询条件：所有唯一键的组合
-    query_conditions = []
-    for record in unique_records:
-        # 为每条数据构建字段匹配条件
-        field_conditions = []
-        for field in REPEAT_CHECK_FIELDS:
-            value = record.get(field)
-            if isinstance(value, str):
-                value = value.strip()
-            # 处理空值：数据库里的NULL和Python的None匹配
-            if value is None:
-                field_conditions.append(getattr(models.TestRecord, field).is_(None))
-            else:
-                field_conditions.append(getattr(models.TestRecord, field) == value)
-        # 把单条数据的所有字段条件合并
-        query_conditions.append(and_(*field_conditions))
-
-    # 4.2 执行查询：获取所有已存在的重复数据的唯一键（使用异步方法）
-    stmt = select(models.TestRecord).filter(or_(*query_conditions))
-    result = await db.execute(stmt)
-    existing_records = result.scalars().all()
-
-    existing_keys: Set[Tuple] = set()
-    for record in existing_records:
-        # 把数据库里的记录也转成唯一键，和Excel里的对比
-        record_dict = {field: getattr(record, field) for field in REPEAT_CHECK_FIELDS}
-        existing_key = generate_unique_key(record_dict)
-        existing_keys.add(existing_key)
-
-    # 4.3 过滤掉数据库已存在的重复数据，只保留全新的有效数据
-    final_import_records: List[dict] = []
-    db_duplicate_count = 0
-    for record in unique_records:
-        unique_key = generate_unique_key(record)
-        if unique_key in existing_keys:
-            db_duplicate_count += 1
-            continue
-        final_import_records.append(record)
-
-    # 5. 数据校验：转Pydantic模型，确保格式符合数据库要求
-    valid_records: List[schemas.TestRecordCreate] = []
-    for idx, item_dict in enumerate(final_import_records):
-        try:
-            record = schemas.TestRecordCreate(**item_dict)
-            valid_records.append(record)
-        except Exception as e:
-            raise HTTPException(
-                status_code=400, detail=f"第{idx+2}行数据格式错误：{str(e)}"
-            )
-
-    # 6. 批量写入数据库：使用异步方法，事务安全
-    success_count = 0
-    if valid_records:
-        try:
-            for record in valid_records:
-                db.add(models.TestRecord(**record.dict()))
-            await db.commit()
-            success_count = len(valid_records)
-        except Exception as e:
-            await db.rollback()
-            raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
-
-    # 7. 返回清晰的导入结果（含所有去重统计）
-    return {
-        "msg": "批量导入完成",
-        "total_excel_rows": total_excel_rows,  # Excel读取的有效数据总行数
-        "excel_duplicate_rows": excel_duplicate_count,  # Excel内过滤的重复行数
-        "db_duplicate_rows": db_duplicate_count,  # 数据库已存在的重复行数
-        "success_import_rows": success_count,  # 最终成功上传的新数据行数
-        "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
-    }
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception as e:
+                # 清理失败不影响主流程，仅记录日志
+                pass
 
 ###################### 刷新数据链接
 
@@ -466,6 +512,7 @@ async def batch_export_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
+    record_ids: Optional[List[int]] = None,
 ):
     """
     批量导出测试记录到Excel
@@ -475,10 +522,13 @@ async def batch_export_records(
     :param function_mode: 功能模式筛选条件
     :param problem_category: 评价维度筛选条件
     :param kpi_type: KPI类型筛选条件
+    :param record_ids: 指定记录ID列表
     :return: Excel文件字节流
     """
     # 构建查询
     stmt = select(models.TestRecord)
+    
+    # 先应用筛选条件（始终生效）
     if project:
         stmt = stmt.filter(models.TestRecord.project.contains(project))
     if car_type:
@@ -489,6 +539,10 @@ async def batch_export_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+    
+    # 如果提供了record_ids，在筛选结果中进一步按ID列表过滤
+    if record_ids and len(record_ids) > 0:
+        stmt = stmt.filter(models.TestRecord.id.in_(record_ids))
 
     # 执行查询
     result = await db.execute(stmt)
@@ -503,7 +557,7 @@ async def batch_export_records(
         "problem_category", "kpi_type", "problem_scene", "problem_type",
         "problem_phenomenon", "takeover_type", "problem_time", "vin_code",
         "data_link", "wetrack_link", "analyze_result", "analyze_user",
-        "software_version", "remarks"
+        "analyze_attach", "software_version", "remarks", "created_at", "updated_at"
     ]
 
     # 转换记录为字典列表（将枚举值转换为存储的名称）
@@ -515,6 +569,9 @@ async def batch_export_records(
             # 如果是枚举类型，转换为枚举名称（数据库存储的格式）
             if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
                 record_dict[field] = value.name  # 获取枚举名称（英文）
+            # 如果是日期时间类型，转换为字符串格式
+            elif isinstance(value, (datetime, date, time)):
+                record_dict[field] = value.strftime("%Y-%m-%d %H:%M:%S")
             else:
                 record_dict[field] = value
         record_dicts.append(record_dict)
