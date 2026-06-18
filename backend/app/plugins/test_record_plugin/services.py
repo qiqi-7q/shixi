@@ -1,12 +1,15 @@
 from typing import List, Optional, Set, Tuple
-
+import os
+import json
 from fastapi import HTTPException
 from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_record_plugin import models, schemas
 from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
+from app.plugins.test_record_plugin.client import APIClient
 from app.utils.handle_excel_testrecord import handle_excel_some
+from datetime import datetime, timezone, timedelta
 
 
 # 创建
@@ -275,3 +278,165 @@ async def batch_import_records(file_path: str, db: AsyncSession):
         "success_import_rows": success_count,  # 最终成功上传的新数据行数
         "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
     }
+
+###################### 刷新数据链接
+
+def convert_to_timestamp(date_obj):
+    """将日期时间转换为秒级时间戳"""
+    if isinstance(date_obj, datetime):
+        beijing_tz = timezone(timedelta(hours=8))
+        if date_obj.tzinfo is None:
+            date_obj = date_obj.replace(tzinfo=beijing_tz)
+        return int(date_obj.timestamp())
+    elif isinstance(date_obj, str):
+        beijing_tz = timezone(timedelta(hours=8))
+        formats = [
+            "%Y年%m月%d日 %H:%M",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+        ]
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(date_obj, fmt)
+                dt = dt.replace(tzinfo=beijing_tz)
+                return int(dt.timestamp())
+            except ValueError:
+                continue
+    raise ValueError(f"无法解析日期时间: {date_obj}")
+
+
+def get_bag_list(set_id, size):
+    """获取 bag 列表并按 VIN 分组"""
+    base_url = "https://leapai.leapmotor.com"
+    api_client = APIClient(base_url, token=None, debug=True)
+    response = api_client.list_bags(set_id, start=0, size=size)
+
+    if 'error' in response:
+        raise ValueError(f"API错误: {response['error']['message']}")
+
+    result = response['result']['infos']
+    grouped_data = {}
+    for item in result:
+        vin = item['vin']
+        if vin not in grouped_data:
+            grouped_data[vin] = []
+        grouped_data[vin].append({
+            'bagId': item['bagId'],
+            'setId': item['setId'],
+            'startTime': item['startTime'],
+            'endTime': item['endTime']
+        })
+    return grouped_data
+
+
+def find_bag_url(target_vin, target_time, grouped_data, set_id):
+    """根据 VIN 和时间匹配 bag 链接"""
+    target_timestamp = convert_to_timestamp(target_time)
+    bag_url = []
+
+    if target_vin in grouped_data:
+        for record in grouped_data[target_vin]:
+            mid_seconds = record['startTime'] + (record['endTime'] - record['startTime']) / 2
+            mid_seconds = mid_seconds / 1000000
+            time_error = abs(target_timestamp - mid_seconds)
+
+            if set_id == 6868888 and time_error < 30:
+                url = f"https://leapai.leapmotor.com/#/dataSet?setId={record['setId']}&bagId={record['bagId']}"
+                bag_url.append(url)
+            elif set_id == 1963 and time_error < 80:
+                url = f"https://leapai.leapmotor.com/#/dataSet?setId={record['setId']}&bagId={record['bagId']}"
+                bag_url.append(url)
+
+    return ', '.join(bag_url) if bag_url else None
+
+
+async def refresh_link(db: AsyncSession):
+    stmt = select(models.TestRecord).filter(
+        models.TestRecord.vin_code.isnot(None),
+        models.TestRecord.problem_time.isnot(None)
+    )
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    if not records:
+        return "未找到需要刷新链接的记录（需要有VIN号和问题时间）"
+
+    try:
+        size = 2000
+        set_id_1963 = 1963
+        set_id_6868 = 6868888
+
+        # 分别拉取两个数据集的bag缓存
+        group_1963 = get_bag_list(set_id_1963, size)
+        group_6868 = get_bag_list(set_id_6868, size)
+
+        # 校验数据集拉取结果
+        err_list = []
+        if not group_1963:
+            err_list.append(f"数据集{set_id_1963}未获取到bag数据")
+        if not group_6868:
+            err_list.append(f"数据集{set_id_6868}未获取到bag数据")
+        if err_list:
+            return "；".join(err_list)
+
+        success_count = 0
+        fail_count = 0
+        no_match_count = 0
+
+        for db_record in records:
+            if not db_record.vin_code or not db_record.problem_time:
+                fail_count += 1
+                continue
+
+            try:
+                # 第一步：原有逻辑，先匹配1963数据集链接
+                link_1963 = find_bag_url(
+                    db_record.vin_code,
+                    db_record.problem_time,
+                    group_1963,
+                    set_id_1963
+                )
+
+                # 第二步：匹配6868888数据集链接
+                link_6868 = find_bag_url(
+                    db_record.vin_code,
+                    db_record.problem_time,
+                    group_6868,
+                    set_id_6868
+                )
+
+                # 拼接两个链接，逗号分隔
+                link_list = []
+                if link_1963:
+                    link_list.append(link_1963)
+                if link_6868:
+                    link_list.append(link_6868)
+
+                if link_list:
+                    # 多个链接逗号拼接存入原data_link
+                    db_record.data_link = ", ".join(link_list)
+                    success_count += 1
+                else:
+                    db_record.data_link = None
+                    no_match_count += 1
+
+            except Exception as e:
+                print(f"匹配链接异常 VIN:{db_record.vin_code} 错误：{str(e)}")
+                fail_count += 1
+                continue
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "total_records": len(records),
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "no_match_count": no_match_count
+        }
+
+    except Exception as e:
+        await db.rollback()
+        return f"刷新数据链接失败: {str(e)}"

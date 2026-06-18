@@ -92,3 +92,14 @@ async def batch_import(
     # return services.batch_import_records(db, data.records)
     result = await services.batch_import_records(path, db)
     return result
+
+# 7. 刷新数据链接
+@router.post("/refresh_link")
+async def refresh_link(
+    db: AsyncSession = Depends(get_db)
+):
+    result = await services.refresh_link(db)
+    if isinstance(result, dict) and result.get("success"):
+        return {"message": "刷新成功", "code": 200, "data": result}
+    else:
+        return {"message": result if isinstance(result, str) else "刷新失败", "code": 400, "data": None}

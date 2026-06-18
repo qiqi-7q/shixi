@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 
 from app.core.database import engine
+from app.core.scheduler import scheduler
 from app.plugins.base_plugin import BasePlugin
 from app.plugins.test_record_plugin import models
 from app.plugins.test_record_plugin.router import router
+from app.plugins.test_record_plugin.tasks import setup_refresh_link_scheduler
 
 
 class TestRecordPlugin(BasePlugin):
@@ -16,8 +18,13 @@ class TestRecordPlugin(BasePlugin):
         return "1.0.0"
 
     async def register(self, app: FastAPI):
-        # 创建表
         async with engine.begin() as conn:
             await conn.run_sync(models.Base.metadata.create_all)
-        # 注册路由
         app.include_router(router, prefix="/api/test_record", tags=["测试记录"])
+        
+        setup_refresh_link_scheduler(scheduler, interval_minutes=10)
+        # 启动定时任务调度器，刷新数据链接任务每10分钟执行一次
+        # 日志文件为scheduler.log，每次重启时清空日志，开启执行一次
+        if not scheduler.running:
+            scheduler.start()
+            print("定时任务调度器已启动")
