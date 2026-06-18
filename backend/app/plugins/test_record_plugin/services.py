@@ -1,12 +1,15 @@
 from typing import List, Optional, Set, Tuple
-
+import os
+import json
 from fastapi import HTTPException
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_record_plugin import models, schemas
 from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
+from app.plugins.test_record_plugin.client import APIClient
 from app.utils.handle_excel_testrecord import handle_excel_some
+from datetime import datetime, timezone, timedelta
 
 
 # 创建
@@ -50,9 +53,19 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
-    stmt = stmt.offset(skip).limit(limit)
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    return {
+        "items": result.scalars().all(),
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 
 # 获取单条
@@ -170,6 +183,20 @@ async def batch_import_records(file_path: str, db: AsyncSession):
     except Exception as e:
         return f"Excel数据处理失败：{str(e)}"
 
+    # 2.5 转换枚举字段：将英文名称转换为中文值（数据库存储的是枚举名称，Pydantic验证需要枚举值）
+    for record in excel_records:
+        # 转换 problem_category
+        if 'problem_category' in record and record['problem_category']:
+            pc_value = record['problem_category'].strip().upper()
+            if pc_value in EvaluationDimension.__members__:
+                record['problem_category'] = EvaluationDimension[pc_value].value
+
+        # 转换 kpi_type
+        if 'kpi_type' in record and record['kpi_type']:
+            kt_value = record['kpi_type'].strip().upper()
+            if kt_value in KPIType.__members__:
+                record['kpi_type'] = KPIType[kt_value].value
+
     # 3. 第一重去重：内存去重，过滤Excel内的重复数据
     unique_records: List[dict] = []
     seen_keys: Set[Tuple] = set()
@@ -214,8 +241,11 @@ async def batch_import_records(file_path: str, db: AsyncSession):
         # 把单条数据的所有字段条件合并
         query_conditions.append(and_(*field_conditions))
 
-    # 4.2 执行查询：获取所有已存在的重复数据的唯一键
-    existing_records = db.query(models.TestRecord).filter(or_(*query_conditions)).all()
+    # 4.2 执行查询：获取所有已存在的重复数据的唯一键（使用异步方法）
+    stmt = select(models.TestRecord).filter(or_(*query_conditions))
+    result = await db.execute(stmt)
+    existing_records = result.scalars().all()
+
     existing_keys: Set[Tuple] = set()
     for record in existing_records:
         # 把数据库里的记录也转成唯一键，和Excel里的对比
@@ -244,16 +274,16 @@ async def batch_import_records(file_path: str, db: AsyncSession):
                 status_code=400, detail=f"第{idx+2}行数据格式错误：{str(e)}"
             )
 
-    # 6. 批量写入数据库：高性能，事务安全
+    # 6. 批量写入数据库：使用异步方法，事务安全
     success_count = 0
     if valid_records:
         try:
-            record_dicts = [record.dict() for record in valid_records]
-            db.bulk_insert_mappings(models.TestRecord, record_dicts)
-            db.commit()
-            success_count = len(record_dicts)
+            for record in valid_records:
+                db.add(models.TestRecord(**record.dict()))
+            await db.commit()
+            success_count = len(valid_records)
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
 
     # 7. 返回清晰的导入结果（含所有去重统计）
@@ -265,3 +295,228 @@ async def batch_import_records(file_path: str, db: AsyncSession):
         "success_import_rows": success_count,  # 最终成功上传的新数据行数
         "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
     }
+
+###################### 刷新数据链接
+
+def convert_to_timestamp(date_obj):
+    """将日期时间转换为秒级时间戳"""
+    if isinstance(date_obj, datetime):
+        beijing_tz = timezone(timedelta(hours=8))
+        if date_obj.tzinfo is None:
+            date_obj = date_obj.replace(tzinfo=beijing_tz)
+        return int(date_obj.timestamp())
+    elif isinstance(date_obj, str):
+        beijing_tz = timezone(timedelta(hours=8))
+        formats = [
+            "%Y年%m月%d日 %H:%M",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y/%m/%d %H:%M",
+            "%Y/%m/%d %H:%M:%S",
+        ]
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(date_obj, fmt)
+                dt = dt.replace(tzinfo=beijing_tz)
+                return int(dt.timestamp())
+            except ValueError:
+                continue
+    raise ValueError(f"无法解析日期时间: {date_obj}")
+
+
+def get_bag_list(set_id, size):
+    """获取 bag 列表并按 VIN 分组"""
+    base_url = "https://leapai.leapmotor.com"
+    api_client = APIClient(base_url, token=None, debug=True)
+    response = api_client.list_bags(set_id, start=0, size=size)
+
+    if 'error' in response:
+        raise ValueError(f"API错误: {response['error']['message']}")
+
+    result = response['result']['infos']
+    grouped_data = {}
+    for item in result:
+        vin = item['vin']
+        if vin not in grouped_data:
+            grouped_data[vin] = []
+        grouped_data[vin].append({
+            'bagId': item['bagId'],
+            'setId': item['setId'],
+            'startTime': item['startTime'],
+            'endTime': item['endTime']
+        })
+    return grouped_data
+
+
+def find_bag_url(target_vin, target_time, grouped_data, set_id):
+    """根据 VIN 和时间匹配 bag 链接"""
+    target_timestamp = convert_to_timestamp(target_time)
+    bag_url = []
+
+    if target_vin in grouped_data:
+        for record in grouped_data[target_vin]:
+            mid_seconds = record['startTime'] + (record['endTime'] - record['startTime']) / 2
+            mid_seconds = mid_seconds / 1000000
+            time_error = abs(target_timestamp - mid_seconds)
+
+            if set_id == 6868888 and time_error < 30:
+                url = f"https://leapai.leapmotor.com/#/dataSet?setId={record['setId']}&bagId={record['bagId']}"
+                bag_url.append(url)
+            elif set_id == 1963 and time_error < 80:
+                url = f"https://leapai.leapmotor.com/#/dataSet?setId={record['setId']}&bagId={record['bagId']}"
+                bag_url.append(url)
+
+    return ', '.join(bag_url) if bag_url else None
+
+
+async def refresh_link(db: AsyncSession):
+    stmt = select(models.TestRecord).filter(
+        models.TestRecord.vin_code.isnot(None),
+        models.TestRecord.problem_time.isnot(None)
+    )
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    if not records:
+        return "未找到需要刷新链接的记录（需要有VIN号和问题时间）"
+
+    try:
+        size = 2000
+        set_id_1963 = 1963
+        set_id_6868 = 6868888
+
+        # 分别拉取两个数据集的bag缓存
+        group_1963 = get_bag_list(set_id_1963, size)
+        group_6868 = get_bag_list(set_id_6868, size)
+
+        # 校验数据集拉取结果
+        err_list = []
+        if not group_1963:
+            err_list.append(f"数据集{set_id_1963}未获取到bag数据")
+        if not group_6868:
+            err_list.append(f"数据集{set_id_6868}未获取到bag数据")
+        if err_list:
+            return "；".join(err_list)
+
+        success_count = 0
+        fail_count = 0
+        no_match_count = 0
+
+        for db_record in records:
+            if not db_record.vin_code or not db_record.problem_time:
+                fail_count += 1
+                continue
+
+            try:
+                # 第一步：原有逻辑，先匹配1963数据集链接
+                link_1963 = find_bag_url(
+                    db_record.vin_code,
+                    db_record.problem_time,
+                    group_1963,
+                    set_id_1963
+                )
+
+                # 第二步：匹配6868888数据集链接
+                link_6868 = find_bag_url(
+                    db_record.vin_code,
+                    db_record.problem_time,
+                    group_6868,
+                    set_id_6868
+                )
+
+                # 拼接两个链接，逗号分隔
+                link_list = []
+                if link_1963:
+                    link_list.append(link_1963)
+                if link_6868:
+                    link_list.append(link_6868)
+
+                if link_list:
+                    # 多个链接逗号拼接存入原data_link
+                    db_record.data_link = ", ".join(link_list)
+                    success_count += 1
+                else:
+                    db_record.data_link = None
+                    no_match_count += 1
+
+            except Exception as e:
+                print(f"匹配链接异常 VIN:{db_record.vin_code} 错误：{str(e)}")
+                fail_count += 1
+                continue
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "total_records": len(records),
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "no_match_count": no_match_count
+        }
+
+    except Exception as e:
+        await db.rollback()
+        return f"刷新数据链接失败: {str(e)}"
+
+# 批量导出测试记录
+async def batch_export_records(
+    db: AsyncSession,
+    project: Optional[str] = None,
+    car_type: Optional[str] = None,
+    function_mode: Optional[FunctionMode] = None,
+    problem_category: Optional[EvaluationDimension] = None,
+    kpi_type: Optional[KPIType] = None,
+):
+    """
+    批量导出测试记录到Excel
+    :param db: 数据库会话
+    :param project: 项目筛选条件
+    :param car_type: 车型筛选条件
+    :param function_mode: 功能模式筛选条件
+    :param problem_category: 评价维度筛选条件
+    :param kpi_type: KPI类型筛选条件
+    :return: Excel文件字节流
+    """
+    # 构建查询
+    stmt = select(models.TestRecord)
+    if project:
+        stmt = stmt.filter(models.TestRecord.project.contains(project))
+    if car_type:
+        stmt = stmt.filter(models.TestRecord.car_type == car_type)
+    if function_mode:
+        stmt = stmt.filter(models.TestRecord.function_mode == function_mode)
+    if problem_category:
+        stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
+    if kpi_type:
+        stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+
+    # 执行查询
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+
+    if not records:
+        return None
+
+    # 定义Excel表头（与导入时的表头一致）
+    headers = [
+        "project", "car_type", "function_mode", "problem_desc",
+        "problem_category", "kpi_type", "problem_scene", "problem_type",
+        "problem_phenomenon", "takeover_type", "problem_time", "vin_code",
+        "data_link", "wetrack_link", "analyze_result", "analyze_user",
+        "software_version", "remarks"
+    ]
+
+    # 转换记录为字典列表（将枚举值转换为存储的名称）
+    record_dicts = []
+    for record in records:
+        record_dict = {}
+        for field in headers:
+            value = getattr(record, field)
+            # 如果是枚举类型，转换为枚举名称（数据库存储的格式）
+            if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
+                record_dict[field] = value.name  # 获取枚举名称（英文）
+            else:
+                record_dict[field] = value
+        record_dicts.append(record_dict)
+
+    return {"headers": headers, "records": record_dicts}

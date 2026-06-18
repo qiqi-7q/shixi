@@ -2,7 +2,7 @@ from typing import Optional
 
 from app.plugins.test_miles_plugin.models import TestMiles
 from fastapi import Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -215,6 +215,7 @@ class DataAnalysis:
             total_val, params["min"], params["mid"], params["max"]
         )
         weight = DataAnalysis.weighted_score(raw, cfg["full_score"])
+        print(f"原始分：{raw}, 加权分：{weight}")
         return raw, weight
 
     @staticmethod
@@ -232,11 +233,12 @@ class DataAnalysis:
         params = cfg["params"]
         unparams = uncfg["deduct_rules"]
         need_deduct = times * unparams["fail"]
-        raw = (
+        raw = max(
+            0.0,
             DataAnalysis.linear_score(
                 total_val, params["min"], params["mid"], params["max"]
             )
-            - need_deduct
+            - need_deduct,
         )
         weight = DataAnalysis.weighted_score(raw, cfg["full_score"])
         return raw, weight
@@ -255,7 +257,7 @@ class DataAnalysis:
             severe_times * RED_GREEN_CFG["deduct_rules"]["severe"]
             + general_times * RED_GREEN_CFG["deduct_rules"]["general"]
         )
-        raw = DataAnalysis.calc_deduct_kpi_base(deduct)
+        raw = max(0.0, DataAnalysis.calc_deduct_kpi_base(deduct))
         weight = DataAnalysis.weighted_score(raw, RED_GREEN_CFG["full_score"])
         return raw, weight
 
@@ -263,7 +265,7 @@ class DataAnalysis:
     def calc_dropped_kpi(DROPPED: int) -> tuple[float, float]:
         """脱手监测扣分计算"""
         deduct = DROPPED * DROPPED_CFG["deduct_per_fault"]
-        raw = DataAnalysis.calc_deduct_kpi_base(deduct)
+        raw = max(0.0, DataAnalysis.calc_deduct_kpi_base(deduct))
         weight = DataAnalysis.weighted_score(raw, DROPPED_CFG["full_score"])
         return raw, weight
 
@@ -285,7 +287,7 @@ class DataAnalysis:
             + MICRO_OA_B * rule["brake_direction"]
             + MICRO_OA_R * rule["no_return_line"]
         )
-        raw = DataAnalysis.calc_deduct_kpi_base(deduct)
+        raw = max(0.0, DataAnalysis.calc_deduct_kpi_base(deduct))
         weight = DataAnalysis.weighted_score(raw, MICRO_OA_CFG["full_score"])
         return raw, weight
 
@@ -304,12 +306,10 @@ class DataAnalysis:
         # 一次遍历完成全量统计
         for rec in records:
             label = rec.kpi_type
-            print("label", label)
             label_c = str(label).split(".")[-1]
-            print("label_c", label_c)
             if label_c in stat_fields:
                 stat_data[label_c] += 1
-        print("stat_data", stat_data)
+
         # 计算每个KPI的MPI 总里程/次数
         for field in stat_fields:
             ratio_key = f"{field}_ratio"
@@ -371,12 +371,14 @@ class DataAnalysis:
 
         # 基础统计值
         total_test_miles = sum(rec.mileage for rec in test_miles_records)
+        print(f"总测试里程:", total_test_miles)
 
         # 统计主表部分数据
         kpiMileage = total_test_miles
 
         # 统计所有KPI项出现次数
         kpi_stat = DataAnalysis.kpi_times_count(total_test_miles, test_records)
+        print("KPI出现次数:", kpi_stat)
 
         # {     次数
         #     "EXIT": 2,
@@ -388,24 +390,30 @@ class DataAnalysis:
         change_lane_success_rate = DataAnalysis.success_rate(
             kpi_stat["CHANGELANE_S"], avaliable_change
         )
+        print("变道成功率:", change_lane_success_rate)
         total_inflow = kpi_stat["INFLOW_S"] + kpi_stat["INFLOW_F"]
         inflow_success_rate = DataAnalysis.success_rate(
             kpi_stat["INFLOW_S"], total_inflow
         )
+        print("汇入成功率:", inflow_success_rate)
         total_outflow = kpi_stat["OUTFLOW_S"] + kpi_stat["OUTFLOW_F"]
         outflow_success_rate = DataAnalysis.success_rate(
             kpi_stat["OUTFLOW_S"], total_outflow
         )
+        print("汇出成功率:", outflow_success_rate)
         total_diverge_converge = (
             kpi_stat["DIVERGE_CONVERGE_S"] + kpi_stat["DIVERGE_CONVERGE_F"]
         )
         diverge_converge_rate = DataAnalysis.success_rate(
             kpi_stat["DIVERGE_CONVERGE_S"], total_diverge_converge
         )
+        print("分合流成功率:", diverge_converge_rate)
         total_special = kpi_stat["SPECIAL_S"] + kpi_stat["SPECIAL_F"]
         special_rate = DataAnalysis.success_rate(kpi_stat["SPECIAL_S"], total_special)
+        print("特殊场景成功率:", special_rate)
         total_recog = kpi_stat["RECOG_S"] + kpi_stat["RECOG_F"]
         recog_rate = DataAnalysis.success_rate(kpi_stat["RECOG_S"], total_recog)
+        print("限速识别成功率:", recog_rate)
 
         # 计算【可靠性】模块
         exit_r, exit_w = DataAnalysis.calc_linear_kpi(kpi_stat["EXIT_ratio"], EXIT_CFG)
@@ -621,7 +629,19 @@ class DataAnalysis:
             )
             exists = await db.scalar(stmt)
             if exists:
-                return "分析数据已存在，无需重复创建"
+                # 覆盖更新：先删除关联数据
+                module_stmt = select(KpiModule).where(KpiModule.main_id == exists.id)
+                module_exists = await db.scalar(module_stmt)
+                if module_exists:
+                    # 删除 kpi_item 关联数据
+                    await db.execute(
+                        delete(KpiItem).where(KpiItem.module_id == module_exists.id)
+                    )
+                    # 删除 kpi_module 数据
+                    await db.delete(module_exists)
+                # 删除 kpi_main 数据
+                await db.delete(exists)
+                await db.flush()
 
             save_data = await DataAnalysis.need_analysis_data(
                 db=db, project=project, model=model, version=version, funcMode=funcMode
@@ -783,10 +803,92 @@ class DataAnalysis:
         analysis_info2 = await dataAnalysis.get_analysis_info(db, analysis_id2)
         if isinstance(analysis_info1, str) or isinstance(analysis_info2, str):
             return "统计数据不存在，请检查ID是否正确"
-        # 对比分析数据
+
         return [analysis_info1, analysis_info2]
 
-    # ====================== 删除分析数据 ======================
+    # ====================== 可视化统计接口 ======================
+    @staticmethod
+    async def get_analysis_overview(
+        db: AsyncSession,
+        project: str = None,
+        carModel: str = None,
+        funcMode: str = None,
+    ):
+        """获取分析数据总览统计：总记录数、平均KPI里程、平均总分、最高总分"""
+        stmt = select(
+            func.count(KpiMain.id).label("total_records"),
+            func.avg(KpiMain.kpiMileage).label("avg_mileage"),
+            func.avg(KpiMain.totalScore).label("avg_score"),
+            func.max(KpiMain.totalScore).label("max_score"),
+        ).filter(KpiMain.is_del == False)
+
+        if project:
+            stmt = stmt.filter(KpiMain.project.contains(project))
+        if carModel:
+            stmt = stmt.filter(KpiMain.carModel == carModel)
+        if funcMode:
+            stmt = stmt.filter(KpiMain.funcMode == funcMode)
+
+        result = await db.execute(stmt)
+        row = result.one()
+
+        return {
+            "total_records": int(row.total_records or 0),
+            "avg_mileage": round(float(row.avg_mileage or 0), 2),
+            "avg_score": round(float(row.avg_score or 0), 2),
+            "max_score": round(float(row.max_score or 0), 2),
+        }
+
+    @staticmethod
+    async def get_projects(db: AsyncSession):
+        """获取所有项目名称列表"""
+        stmt = select(func.distinct(KpiMain.project)).filter(KpiMain.is_del == False)
+        result = await db.execute(stmt)
+        return [row[0] for row in result.all() if row[0]]
+
+    @staticmethod
+    async def get_version_stats(
+        db: AsyncSession,
+        project: str = None,
+        carModel: str = None,
+        funcMode: str = None,
+    ):
+        """获取版本得分统计（可按项目名称筛选）"""
+        stmt = select(
+            KpiMain.project,
+            KpiMain.carModel,
+            KpiMain.version,
+            KpiMain.funcMode,
+            func.avg(KpiMain.totalScore).label("avg_score"),
+            func.sum(KpiMain.kpiMileage).label("total_mileage"),
+            func.count(KpiMain.id).label("record_count"),
+        ).filter(KpiMain.is_del == False)
+
+        if project:
+            stmt = stmt.filter(KpiMain.project == project)  # 精确匹配项目名称
+        if carModel:
+            stmt = stmt.filter(KpiMain.carModel == carModel)
+        if funcMode:
+            stmt = stmt.filter(KpiMain.funcMode == funcMode)
+
+        stmt = stmt.group_by(
+            KpiMain.project, KpiMain.carModel, KpiMain.version, KpiMain.funcMode
+        ).order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
+
+        result = await db.execute(stmt)
+        return [
+            {
+                "project": row.project,
+                "carModel": row.carModel,
+                "version": row.version,
+                "funcMode": row.funcMode,
+                "avg_score": round(float(row.avg_score or 0), 2),
+                "total_mileage": round(float(row.total_mileage or 0), 2),
+                "record_count": int(row.record_count or 0),
+            }
+            for row in result.all()
+        ]
+
     @staticmethod
     async def delete_analysis_data(db: AsyncSession, analysis_id: int):
         if not analysis_id:

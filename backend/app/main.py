@@ -8,12 +8,17 @@ from starlette.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
+from app.core.scheduler import stop_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
     print("Starting up...")
+    # 测试Redis连接
+    result = await redisserve.conn_ping()
+    print(result)
+
     # 测试 Redis 连接
     redis_result = await redisserve.conn_ping()
     print(redis_result)
@@ -49,6 +54,7 @@ async def lifespan(app: FastAPI):
 
     yield
     # 关闭时执行
+    stop_scheduler()
     print("Shutting down...")
     await redisserve.close_conn()
 

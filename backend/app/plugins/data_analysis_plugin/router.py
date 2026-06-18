@@ -58,7 +58,27 @@ async def get_analysis_datas(
         version=version,
         funcMode=funcMode,
     )
-    return {"message": "success", "code": 200, "data": records, "total": total_count}
+    # 将 SQLAlchemy 对象转换为可序列化的字典
+    data = []
+    for record in records:
+        data.append(
+            {
+                "id": record.id,
+                "project": record.project,
+                "carModel": record.carModel,
+                "version": record.version,
+                "funcMode": record.funcMode,
+                "kpiMileage": float(record.kpiMileage),
+                "totalScore": float(record.totalScore),
+                "createTime": (
+                    record.createTime.isoformat() if record.createTime else None
+                ),
+                "updateTime": (
+                    record.updateTime.isoformat() if record.updateTime else None
+                ),
+            }
+        )
+    return {"message": "success", "code": 200, "data": data, "total": total_count}
 
 
 @router.get("/get_analysis/{analysis_id}")
@@ -96,3 +116,43 @@ async def delete_analysis(analysis_id: int, db: AsyncSession = Depends(get_db)):
         return {"message": "分析删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
+
+
+# ==================== 可视化统计接口 ====================
+@router.get("/stats/overview")
+async def get_analysis_overview_route(
+    db: AsyncSession = Depends(get_db),
+    project: Optional[str] = Query(None, description="项目筛选（模糊匹配）"),
+    carModel: Optional[str] = Query(None, description="车型筛选"),
+    funcMode: Optional[str] = Query(None, description="功能模式筛选"),
+):
+    """获取分析数据总览统计：总记录数、平均KPI里程、平均总分、最高总分"""
+    result = await dataAnalysis.get_analysis_overview(
+        db, project=project, carModel=carModel, funcMode=funcMode
+    )
+    return {"code": 200, "data": result, "message": "获取分析数据总览成功"}
+
+
+@router.get("/stats/projects")
+async def get_projects_route(db: AsyncSession = Depends(get_db)):
+    """获取所有项目名称列表"""
+    result = await dataAnalysis.get_projects(db)
+    return {"code": 200, "data": {"projects": result}, "message": "获取项目列表成功"}
+
+
+@router.get("/stats/version")
+async def get_version_stats_route(
+    db: AsyncSession = Depends(get_db),
+    project: Optional[str] = Query(None, description="项目名称（精确匹配）"),
+    carModel: Optional[str] = Query(None, description="车型筛选"),
+    funcMode: Optional[str] = Query(None, description="功能模式筛选"),
+):
+    """获取版本得分统计（可按项目名称筛选）"""
+    result = await dataAnalysis.get_version_stats(
+        db, project=project, carModel=carModel, funcMode=funcMode
+    )
+    return {
+        "code": 200,
+        "data": {"version_stats": result},
+        "message": "获取版本得分统计成功",
+    }
