@@ -3,8 +3,29 @@ from app.core.config import settings
 from fastapi_mail import FastMail, MessageSchema, MessageType,ConnectionConfig
 from pydantic import EmailStr
 
+
+    # MAIL_USERNAME: str = "2634808@leapmotor.com"
+    # # 邮箱授权码（不是登录密码！）
+    # MAIL_PASSWORD: str = "Sqy123456."
+    # # 发件人邮箱
+    # MAIL_FROM: str = "shang_qingyuan@leapmotor.com"
+    # # 发件人名称
+    # MAIL_FROM_NAME: str = "自动化测试平台官方"
+    # # SMTP 服务器地址
+    # MAIL_SERVER: str = "mail.leapmotor.com"
+    # # 邮箱是否需要 STARTTLS 加密
+    # MAIL_STARTTLS: bool = True,
+    # # 邮箱是否需要 SSL 加密
+    # MAIL_SSL_TLS: bool = False,
+    # # 邮箱是否需要验证证书
+    # VALIDATE_CERTS: bool = True,
+    # # 邮箱是否需要使用认证
+    # USE_CREDENTIALS: bool = True,
+    # # SMTP 端口（465 是 SSL 安全端口）
+    # MAIL_PORT: int = 587
+
 conf = ConnectionConfig(
-    # 发件人邮箱
+
     MAIL_USERNAME=settings.MAIL_USERNAME,
     # 邮箱授权码（不是登录密码！）
     MAIL_PASSWORD=settings.MAIL_PASSWORD,
@@ -17,11 +38,10 @@ conf = ConnectionConfig(
     # MAIL_SERVER="smtp.163.com",  # 163邮箱用这个
     # SMTP 端口（465 是 SSL 安全端口，几乎通用）
     MAIL_PORT=settings.MAIL_PORT,
-    # 使用 SSL 加密
-    MAIL_SSL_TLS=True,
-    MAIL_STARTTLS=False,
-    # 验证发件人
-    VALIDATE_CERTS=False
+    MAIL_SSL_TLS=settings.MAIL_SSL_TLS,
+    MAIL_STARTTLS=settings.MAIL_STARTTLS,
+    VALIDATE_CERTS=settings.VALIDATE_CERTS,
+    USE_CREDENTIALS=settings.USE_CREDENTIALS,
 )
 
 

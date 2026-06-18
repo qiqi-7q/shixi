@@ -135,7 +135,6 @@ async def forget_password(
     db: AsyncSession = Depends(get_db),
 ):
     """忘记密码"""
-    # 查询用户
     stmt = select(models.User).where(models.User.username == username)
     result = await db.execute(stmt)
     current_user = result.scalar_one_or_none()
@@ -143,19 +142,9 @@ async def forget_password(
     if not current_user:
         return {"code": 400, "message": "用户不存在", "data": None}
 
-    # 直接返回用户信息（包含密码），不发送邮件
-    return {"code": 200, "message": "查询成功", "data": {
-        "id": current_user.id,
-        "username": current_user.username,
-        "full_name": current_user.full_name,
-        "email": current_user.email,
-        "password": current_user.hashed_password,
-        "is_superuser": current_user.is_superuser
-    }}
-    # # 发送新密码到用户邮箱
-    # await send_text_email(
-    #     to_email=current_user.email,
-    #     subject="忘记密码邮件",
-    #     body=f"您的新密码是{current_user.hashed_password}",
-    # )
-    # return {"message": "Password has been sent to your email address","code":200,"data":current_user}
+    await send_text_email(
+        to_email=current_user.email,
+        subject="忘记密码邮件",
+        body=f"您的新密码是{current_user.hashed_password}",
+    )
+    return {"message": "Password has been sent to your email address","code":200,"data":current_user}
