@@ -14,7 +14,6 @@ class VehicleBase(BaseModel):
     vin_code: str = Field(..., max_length=17, description="VIN码")
     owner_name: str = Field(..., max_length=100, description="车主权限")
     plate_number: str = Field(..., max_length=20, description="车牌号")
-    editor: str = Field(..., max_length=20, description="最后编辑人")
     group: Optional[VehicleGroup] = Field(None, description="组别")
     vehicle_status: Optional[VehicleStatus] = Field(None, description="车辆状态")
     test_status: Optional[TestStatus] = Field(None, description="测试状态")
@@ -57,7 +56,6 @@ class VehicleUpdate(BaseModel):
     )
     temp_plate_expire_date: Optional[date] = Field(None, description="临牌到期时间")
     temp_plate_count: Optional[int] = None
-    editor: Optional[str] = Field(None, max_length=20, description="最后编辑人")
     remarks: Optional[str] = Field(None, description="备注")
 
 
@@ -86,9 +84,7 @@ class BorrowRecordBase(BaseModel):
         None, max_length=100, description="司机绩效"
     )
     record_creator: Optional[str] = Field(None, max_length=50, description="记录创建人")
-    borrow_status: Optional[str] = Field(
-        None, max_length=20, description="借用状态"
-    )
+    borrow_status: Optional[str] = Field(None, max_length=20, description="借用状态")
     remarks: Optional[str] = Field(None, description="备注")
 
 

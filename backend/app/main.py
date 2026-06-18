@@ -15,10 +15,6 @@ from app.core.scheduler import stop_scheduler
 async def lifespan(app: FastAPI):
     # 启动时执行
     print("Starting up...")
-    # 测试Redis连接
-    result = await redisserve.conn_ping()
-    print(result)
-
     # 测试 Redis 连接
     redis_result = await redisserve.conn_ping()
     print(redis_result)
@@ -110,5 +106,5 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
-    # uvicorn.run("app.main:app", host="10.192.183.119", port=8000, reload=True)
+    # uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="10.192.183.119", port=8000, reload=True)
