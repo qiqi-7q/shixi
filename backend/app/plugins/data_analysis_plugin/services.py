@@ -304,9 +304,12 @@ class DataAnalysis:
         # 一次遍历完成全量统计
         for rec in records:
             label = rec.kpi_type
-            if label in stat_fields:
-                stat_data[label] += 1
-
+            print("label", label)
+            label_c = str(label).split(".")[-1]
+            print("label_c", label_c)
+            if label_c in stat_fields:
+                stat_data[label_c] += 1
+        print("stat_data", stat_data)
         # 计算每个KPI的MPI 总里程/次数
         for field in stat_fields:
             ratio_key = f"{field}_ratio"
