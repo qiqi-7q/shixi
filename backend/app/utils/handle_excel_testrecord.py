@@ -67,7 +67,11 @@ def excel_to_dict_list(file_path):
     # 加载Excel文件
     try:
         wb = load_workbook(file_path)
-        ws = wb["Sheet1"]  # 默认读取Sheet1，可根据需要修改
+        # 优先读取第一个工作表（兼容不同的sheet名称）
+        if wb.sheetnames:
+            ws = wb[wb.sheetnames[0]]
+        else:
+            return "❌ Excel文件中没有工作表"
     except Exception as e:
         return f"❌ 文件读取失败：{e}"
     return ws
@@ -75,6 +79,9 @@ def excel_to_dict_list(file_path):
 
 def handle_excel_some(file_path):
     ws = excel_to_dict_list(file_path)
+    # 检查是否返回了错误信息
+    if isinstance(ws, str):
+        raise Exception(ws)
     dict_list, headers = handle_data(ws)
 
     return dict_list, headers

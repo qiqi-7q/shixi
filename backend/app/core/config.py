@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "123456"
+    MYSQL_PASSWORD: str = "root"
     MYSQL_DATABASE: str = "data_platform_test"
 
     # Redis配置s
@@ -28,11 +28,11 @@ class Settings(BaseSettings):
 
     # 1. 邮箱配置（核心！根据你的邮箱修改）
     # 发件人邮箱
-    MAIL_USERNAME: str = "1422547400@qq.com"
+    MAIL_USERNAME: str = "3380170838@qq.com"
     # 邮箱授权码（不是登录密码！）
-    MAIL_PASSWORD: str = "ryapzywouobjfggb"
+    MAIL_PASSWORD: str = "codywrmkfbqzchab"
     # 发件人邮箱
-    MAIL_FROM: str = "1422547400@qq.com"
+    MAIL_FROM: str = "3380170838@qq.com"
     # 发件人名称
     MAIL_FROM_NAME: str = "自动化测试平台官方"
     # SMTP 服务器地址

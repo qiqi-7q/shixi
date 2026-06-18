@@ -1,7 +1,10 @@
+import io
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+import xlsxwriter
 
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
@@ -92,3 +95,64 @@ async def batch_import(
     # return services.batch_import_records(db, data.records)
     result = await services.batch_import_records(path, db)
     return result
+
+
+# 7. 批量导出测试记录
+@router.get("/batch_export")
+async def batch_export(
+    db: AsyncSession = Depends(get_db),
+    project: Optional[str] = Query(None, description="项目筛选"),
+    car_type: Optional[str] = Query(None, description="车型筛选"),
+    function_mode: Optional[FunctionMode] = Query(None, description="功能模式筛选"),
+    problem_category: Optional[EvaluationDimension] = Query(None, description="评价维度筛选"),
+    kpi_type: Optional[KPIType] = Query(None, description="KPI类型筛选"),
+):
+    """
+    批量导出测试记录到Excel文件
+    :param project: 项目筛选条件（模糊匹配）
+    :param car_type: 车型筛选条件
+    :param function_mode: 功能模式筛选条件
+    :param problem_category: 评价维度筛选条件
+    :param kpi_type: KPI类型筛选条件
+    :return: Excel文件流
+    """
+    # 查询数据
+    export_data = await services.batch_export_records(
+        db,
+        project=project,
+        car_type=car_type,
+        function_mode=function_mode,
+        problem_category=problem_category,
+        kpi_type=kpi_type,
+    )
+    
+    if not export_data:
+        return {"message": "没有找到符合条件的数据", "code": 400, "data": None}
+    
+    # 创建Excel文件
+    output = io.BytesIO()
+    workbook = xlsxwriter.Workbook(output)
+    worksheet = workbook.add_worksheet("测试记录")
+    
+    # 写入表头
+    headers = export_data["headers"]
+    for col, header in enumerate(headers):
+        worksheet.write(0, col, header)
+    
+    # 写入数据
+    records = export_data["records"]
+    for row, record in enumerate(records, start=1):
+        for col, header in enumerate(headers):
+            worksheet.write(row, col, record.get(header, ""))
+    
+    workbook.close()
+    output.seek(0)
+    
+    # 返回Excel文件流
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=test_records_export.xlsx"
+        }
+    )

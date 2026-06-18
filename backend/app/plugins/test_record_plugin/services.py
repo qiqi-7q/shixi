@@ -170,6 +170,20 @@ async def batch_import_records(file_path: str, db: AsyncSession):
     except Exception as e:
         return f"Excel数据处理失败：{str(e)}"
 
+    # 2.5 转换枚举字段：将英文名称转换为中文值（数据库存储的是枚举名称，Pydantic验证需要枚举值）
+    for record in excel_records:
+        # 转换 problem_category
+        if 'problem_category' in record and record['problem_category']:
+            pc_value = record['problem_category'].strip().upper()
+            if pc_value in EvaluationDimension.__members__:
+                record['problem_category'] = EvaluationDimension[pc_value].value
+        
+        # 转换 kpi_type
+        if 'kpi_type' in record and record['kpi_type']:
+            kt_value = record['kpi_type'].strip().upper()
+            if kt_value in KPIType.__members__:
+                record['kpi_type'] = KPIType[kt_value].value
+
     # 3. 第一重去重：内存去重，过滤Excel内的重复数据
     unique_records: List[dict] = []
     seen_keys: Set[Tuple] = set()
@@ -214,8 +228,11 @@ async def batch_import_records(file_path: str, db: AsyncSession):
         # 把单条数据的所有字段条件合并
         query_conditions.append(and_(*field_conditions))
 
-    # 4.2 执行查询：获取所有已存在的重复数据的唯一键
-    existing_records = db.query(models.TestRecord).filter(or_(*query_conditions)).all()
+    # 4.2 执行查询：获取所有已存在的重复数据的唯一键（使用异步方法）
+    stmt = select(models.TestRecord).filter(or_(*query_conditions))
+    result = await db.execute(stmt)
+    existing_records = result.scalars().all()
+    
     existing_keys: Set[Tuple] = set()
     for record in existing_records:
         # 把数据库里的记录也转成唯一键，和Excel里的对比
@@ -244,16 +261,16 @@ async def batch_import_records(file_path: str, db: AsyncSession):
                 status_code=400, detail=f"第{idx+2}行数据格式错误：{str(e)}"
             )
 
-    # 6. 批量写入数据库：高性能，事务安全
+    # 6. 批量写入数据库：使用异步方法，事务安全
     success_count = 0
     if valid_records:
         try:
-            record_dicts = [record.dict() for record in valid_records]
-            db.bulk_insert_mappings(models.TestRecord, record_dicts)
-            db.commit()
-            success_count = len(record_dicts)
+            for record in valid_records:
+                db.add(models.TestRecord(**record.dict()))
+            await db.commit()
+            success_count = len(valid_records)
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
 
     # 7. 返回清晰的导入结果（含所有去重统计）
@@ -265,3 +282,67 @@ async def batch_import_records(file_path: str, db: AsyncSession):
         "success_import_rows": success_count,  # 最终成功上传的新数据行数
         "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
     }
+
+
+# 批量导出测试记录
+async def batch_export_records(
+    db: AsyncSession,
+    project: Optional[str] = None,
+    car_type: Optional[str] = None,
+    function_mode: Optional[FunctionMode] = None,
+    problem_category: Optional[EvaluationDimension] = None,
+    kpi_type: Optional[KPIType] = None,
+):
+    """
+    批量导出测试记录到Excel
+    :param db: 数据库会话
+    :param project: 项目筛选条件
+    :param car_type: 车型筛选条件
+    :param function_mode: 功能模式筛选条件
+    :param problem_category: 评价维度筛选条件
+    :param kpi_type: KPI类型筛选条件
+    :return: Excel文件字节流
+    """
+    # 构建查询
+    stmt = select(models.TestRecord)
+    if project:
+        stmt = stmt.filter(models.TestRecord.project.contains(project))
+    if car_type:
+        stmt = stmt.filter(models.TestRecord.car_type == car_type)
+    if function_mode:
+        stmt = stmt.filter(models.TestRecord.function_mode == function_mode)
+    if problem_category:
+        stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
+    if kpi_type:
+        stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+    
+    # 执行查询
+    result = await db.execute(stmt)
+    records = result.scalars().all()
+    
+    if not records:
+        return None
+    
+    # 定义Excel表头（与导入时的表头一致）
+    headers = [
+        "project", "car_type", "function_mode", "problem_desc", 
+        "problem_category", "kpi_type", "problem_scene", "problem_type",
+        "problem_phenomenon", "takeover_type", "problem_time", "vin_code",
+        "data_link", "wetrack_link", "analyze_result", "analyze_user",
+        "software_version", "remarks"
+    ]
+    
+    # 转换记录为字典列表（将枚举值转换为存储的名称）
+    record_dicts = []
+    for record in records:
+        record_dict = {}
+        for field in headers:
+            value = getattr(record, field)
+            # 如果是枚举类型，转换为枚举名称（数据库存储的格式）
+            if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
+                record_dict[field] = value.name  # 获取枚举名称（英文）
+            else:
+                record_dict[field] = value
+        record_dicts.append(record_dict)
+    
+    return {"headers": headers, "records": record_dicts}
