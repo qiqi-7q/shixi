@@ -3,8 +3,6 @@ import enum
 from sqlalchemy import Column, DECIMAL, Date, DateTime, Enum, Integer, String, Text
 from sqlalchemy.sql import func
 
-from app.core.database import Base
-
 
 class DriverStatus(enum.Enum):
     NORMAL = "正常"

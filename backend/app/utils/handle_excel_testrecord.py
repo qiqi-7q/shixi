@@ -86,6 +86,7 @@ def handle_excel_some(file_path):
     # 检查是否返回了错误信息
     if isinstance(ws, str):
         raise Exception(ws)
+    # 处理数据行
     dict_list, headers = handle_data(ws)
 
     return dict_list, headers

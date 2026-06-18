@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from pydantic_settings import BaseSettings
@@ -14,7 +15,7 @@ class Settings(BaseSettings):
     # Redis配置s
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
-    REDIS_URL: str = "redis://127.0.0.1:6379/"
+    REDIS_URL: str = "redis://127.0.0.1"
     REDIS_DB: int = 0
     REDIS_PASSWORD: Optional[str] = "123456"
     # JWT配置
@@ -26,7 +27,14 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
 
-    # 邮箱配置（核心！根据你的邮箱修改）
+    # 项目根目录（app文件夹）
+    BASE_DIR: Path = Path(__file__).parent.parent
+    # 静态文件目录
+    STATIC_DIR: Path = BASE_DIR / "static"
+    # 上传文件目录
+    UPLOAD_DIR: Path = BASE_DIR / "uploads"
+
+    # 1. 邮箱配置（核心！根据你的邮箱修改）
     # 发件人邮箱
     MAIL_USERNAME: str = "2634808@leapmotor.com"
     # 邮箱授权码（不是登录密码！）

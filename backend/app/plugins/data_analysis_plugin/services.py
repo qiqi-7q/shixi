@@ -233,11 +233,12 @@ class DataAnalysis:
         params = cfg["params"]
         unparams = uncfg["deduct_rules"]
         need_deduct = times * unparams["fail"]
-        raw = max(0.0,
+        raw = max(
+            0.0,
             DataAnalysis.linear_score(
                 total_val, params["min"], params["mid"], params["max"]
             )
-            - need_deduct
+            - need_deduct,
         )
         weight = DataAnalysis.weighted_score(raw, cfg["full_score"])
         return raw, weight
@@ -802,9 +803,9 @@ class DataAnalysis:
         analysis_info2 = await dataAnalysis.get_analysis_info(db, analysis_id2)
         if isinstance(analysis_info1, str) or isinstance(analysis_info2, str):
             return "统计数据不存在，请检查ID是否正确"
-        
+
         return [analysis_info1, analysis_info2]
-    
+
     @staticmethod
     async def delete_analysis_data(db: AsyncSession, analysis_id: int):
         if not analysis_id:
@@ -817,74 +818,100 @@ class DataAnalysis:
         await db.refresh(stmt)
         return "success"
 
+    # ====================== 可视化统计接口 ======================
+    @staticmethod
+    async def get_analysis_overview(
+        db: AsyncSession,
+        project: str = None,
+        carModel: str = None,
+        funcMode: str = None,
+    ):
+        """获取分析数据总览统计：总记录数、平均KPI里程、平均总分、最高总分"""
+        stmt = select(
+            func.count(KpiMain.id).label("total_records"),
+            func.avg(KpiMain.kpiMileage).label("avg_mileage"),
+            func.avg(KpiMain.totalScore).label("avg_score"),
+            func.max(KpiMain.totalScore).label("max_score"),
+        ).filter(KpiMain.is_del == False)
 
-# ====================== 可视化统计接口 ======================
-async def get_analysis_overview(db: AsyncSession, project: str = None, carModel: str = None, funcMode: str = None):
-    """获取分析数据总览统计：总记录数、平均KPI里程、平均总分、最高总分"""
-    stmt = select(
-        func.count(KpiMain.id).label('total_records'),
-        func.avg(KpiMain.kpiMileage).label('avg_mileage'),
-        func.avg(KpiMain.totalScore).label('avg_score'),
-        func.max(KpiMain.totalScore).label('max_score')
-    ).filter(KpiMain.is_del == False)
-    
-    if project:
-        stmt = stmt.filter(KpiMain.project.contains(project))
-    if carModel:
-        stmt = stmt.filter(KpiMain.carModel == carModel)
-    if funcMode:
-        stmt = stmt.filter(KpiMain.funcMode == funcMode)
-    
-    result = await db.execute(stmt)
-    row = result.one()
-    
-    return {
-        "total_records": int(row.total_records or 0),
-        "avg_mileage": round(float(row.avg_mileage or 0), 2),
-        "avg_score": round(float(row.avg_score or 0), 2),
-        "max_score": round(float(row.max_score or 0), 2)
-    }
+        if project:
+            stmt = stmt.filter(KpiMain.project.contains(project))
+        if carModel:
+            stmt = stmt.filter(KpiMain.carModel == carModel)
+        if funcMode:
+            stmt = stmt.filter(KpiMain.funcMode == funcMode)
 
+        result = await db.execute(stmt)
+        row = result.one()
 
-async def get_projects(db: AsyncSession):
-    """获取所有项目名称列表"""
-    stmt = select(func.distinct(KpiMain.project)).filter(KpiMain.is_del == False)
-    result = await db.execute(stmt)
-    return [row[0] for row in result.all() if row[0]]
+        return {
+            "total_records": int(row.total_records or 0),
+            "avg_mileage": round(float(row.avg_mileage or 0), 2),
+            "avg_score": round(float(row.avg_score or 0), 2),
+            "max_score": round(float(row.max_score or 0), 2),
+        }
 
+    @staticmethod
+    async def get_projects(db: AsyncSession):
+        """获取所有项目名称列表"""
+        stmt = select(func.distinct(KpiMain.project)).filter(KpiMain.is_del == False)
+        result = await db.execute(stmt)
+        return [row[0] for row in result.all() if row[0]]
 
-async def get_version_stats(db: AsyncSession, project: str = None, carModel: str = None, funcMode: str = None):
-    """获取版本得分统计（可按项目名称筛选）"""
-    stmt = select(
-        KpiMain.project,
-        KpiMain.carModel,
-        KpiMain.version,
-        KpiMain.funcMode,
-        func.avg(KpiMain.totalScore).label('avg_score'),
-        func.sum(KpiMain.kpiMileage).label('total_mileage'),
-        func.count(KpiMain.id).label('record_count')
-    ).filter(KpiMain.is_del == False)
-    
-    if project:
-        stmt = stmt.filter(KpiMain.project == project)  # 精确匹配项目名称
-    if carModel:
-        stmt = stmt.filter(KpiMain.carModel == carModel)
-    if funcMode:
-        stmt = stmt.filter(KpiMain.funcMode == funcMode)
-    
-    stmt = stmt.group_by(KpiMain.project, KpiMain.carModel, KpiMain.version, KpiMain.funcMode) \
-            .order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
-    
-    result = await db.execute(stmt)
-    return [{
-        "project": row.project,
-        "carModel": row.carModel,
-        "version": row.version,
-        "funcMode": row.funcMode,
-        "avg_score": round(float(row.avg_score or 0), 2),
-        "total_mileage": round(float(row.total_mileage or 0), 2),
-        "record_count": int(row.record_count or 0)
-    } for row in result.all()]
+    @staticmethod
+    async def get_version_stats(
+        db: AsyncSession,
+        project: str = None,
+        carModel: str = None,
+        funcMode: str = None,
+    ):
+        """获取版本得分统计（可按项目名称筛选）"""
+        stmt = select(
+            KpiMain.project,
+            KpiMain.carModel,
+            KpiMain.version,
+            KpiMain.funcMode,
+            func.avg(KpiMain.totalScore).label("avg_score"),
+            func.sum(KpiMain.kpiMileage).label("total_mileage"),
+            func.count(KpiMain.id).label("record_count"),
+        ).filter(KpiMain.is_del == False)
+
+        if project:
+            stmt = stmt.filter(KpiMain.project == project)  # 精确匹配项目名称
+        if carModel:
+            stmt = stmt.filter(KpiMain.carModel == carModel)
+        if funcMode:
+            stmt = stmt.filter(KpiMain.funcMode == funcMode)
+
+        stmt = stmt.group_by(
+            KpiMain.project, KpiMain.carModel, KpiMain.version, KpiMain.funcMode
+        ).order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
+
+        result = await db.execute(stmt)
+        return [
+            {
+                "project": row.project,
+                "carModel": row.carModel,
+                "version": row.version,
+                "funcMode": row.funcMode,
+                "avg_score": round(float(row.avg_score or 0), 2),
+                "total_mileage": round(float(row.total_mileage or 0), 2),
+                "record_count": int(row.record_count or 0),
+            }
+            for row in result.all()
+        ]
+
+    @staticmethod
+    async def delete_analysis_data(db: AsyncSession, analysis_id: int):
+        if not analysis_id:
+            return "分析数据ID不能为空"
+        stmt = await db.get(KpiMain, analysis_id)
+        if not stmt:
+            return "分析数据不存在"
+        stmt.is_del = True
+        await db.commit()
+        await db.refresh(stmt)
+        return "success"
 
 
 # 实例化

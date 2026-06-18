@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.plugins.data_analysis_plugin.services import dataAnalysis, get_analysis_overview, get_projects, get_version_stats
+from app.plugins.data_analysis_plugin.services import dataAnalysis
 
 router = APIRouter()
 
@@ -61,17 +61,23 @@ async def get_analysis_datas(
     # 将 SQLAlchemy 对象转换为可序列化的字典
     data = []
     for record in records:
-        data.append({
-            "id": record.id,
-            "project": record.project,
-            "carModel": record.carModel,
-            "version": record.version,
-            "funcMode": record.funcMode,
-            "kpiMileage": float(record.kpiMileage),
-            "totalScore": float(record.totalScore),
-            "createTime": record.createTime.isoformat() if record.createTime else None,
-            "updateTime": record.updateTime.isoformat() if record.updateTime else None,
-        })
+        data.append(
+            {
+                "id": record.id,
+                "project": record.project,
+                "carModel": record.carModel,
+                "version": record.version,
+                "funcMode": record.funcMode,
+                "kpiMileage": float(record.kpiMileage),
+                "totalScore": float(record.totalScore),
+                "createTime": (
+                    record.createTime.isoformat() if record.createTime else None
+                ),
+                "updateTime": (
+                    record.updateTime.isoformat() if record.updateTime else None
+                ),
+            }
+        )
     return {"message": "success", "code": 200, "data": data, "total": total_count}
 
 
@@ -121,14 +127,16 @@ async def get_analysis_overview_route(
     funcMode: Optional[str] = Query(None, description="功能模式筛选"),
 ):
     """获取分析数据总览统计：总记录数、平均KPI里程、平均总分、最高总分"""
-    result = await get_analysis_overview(db, project=project, carModel=carModel, funcMode=funcMode)
+    result = await dataAnalysis.get_analysis_overview(
+        db, project=project, carModel=carModel, funcMode=funcMode
+    )
     return {"code": 200, "data": result, "message": "获取分析数据总览成功"}
 
 
 @router.get("/stats/projects")
 async def get_projects_route(db: AsyncSession = Depends(get_db)):
     """获取所有项目名称列表"""
-    result = await get_projects(db)
+    result = await dataAnalysis.get_projects(db)
     return {"code": 200, "data": {"projects": result}, "message": "获取项目列表成功"}
 
 
@@ -140,5 +148,11 @@ async def get_version_stats_route(
     funcMode: Optional[str] = Query(None, description="功能模式筛选"),
 ):
     """获取版本得分统计（可按项目名称筛选）"""
-    result = await get_version_stats(db, project=project, carModel=carModel, funcMode=funcMode)
-    return {"code": 200, "data": {"version_stats": result}, "message": "获取版本得分统计成功"}
+    result = await dataAnalysis.get_version_stats(
+        db, project=project, carModel=carModel, funcMode=funcMode
+    )
+    return {
+        "code": 200,
+        "data": {"version_stats": result},
+        "message": "获取版本得分统计成功",
+    }

@@ -15,10 +15,10 @@ class RedisService:
             "max_connections": 30,
             "protocol": 2,  # 强制使用 RESP2 协议
         }
-        
+
         if settings.REDIS_PASSWORD:
             connection_kwargs["password"] = settings.REDIS_PASSWORD
-        
+
         self.redis_client = Redis(**connection_kwargs)
 
     async def set_token(self, user_id: int, token: str, expire_seconds: int = 1800):

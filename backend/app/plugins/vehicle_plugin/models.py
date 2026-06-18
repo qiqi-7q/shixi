@@ -6,7 +6,8 @@ from sqlalchemy.sql import func
 
 from app.core.database import Base
 
-#数据库存储的以及前端传递的都是英文，返回给前端的是中文
+
+# 数据库存储的以及前端传递的都是英文，返回给前端的是中文
 class VehicleStatus(str, enum.Enum):
     AVAILABLE = "可借用"
     BORROWED = "已借出"
@@ -43,21 +44,20 @@ class Vehicle(Base):
     )
     parking_location = Column(String(200), comment="停车地点")
     vehicle_status = Column(
-        Enum(VehicleStatus), default=VehicleStatus.AVAILABLE, comment="车辆状态"
+        Enum(VehicleStatus), default=VehicleStatus.AVAILABLE, comment="使用状态"
     )
     test_status = Column(
-        Enum(TestStatus), default=TestStatus.ALL_SUPPORT, comment="测试状态"
+        Enum(TestStatus), default=TestStatus.ALL_SUPPORT, comment="车辆状态"
     )
     remarks = Column(Text, comment="备注")
     vin_code = Column(
         String(17), unique=True, index=True, nullable=False, comment="VIN码"
     )
-    
+
     engine_num = Column(String(100), comment="驱动电机号/发动机号")
     plate_number = Column(String(20), nullable=False, comment="车牌号")
     temp_plate_expire_date = Column(Date, comment="临牌到期时间")
     temp_plate_count = Column(Integer, default=0, comment="临牌已办理次数")
-    editor = Column(String(20), nullable=False, comment="最后编辑人")
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
     updated_at = Column(
         DateTime, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
@@ -74,9 +74,7 @@ class BorrowRecord(Base):
     model = Column(String(100), comment="车型")
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
     vehicle_code = Column(String(50), comment="车辆编号")
-    vin_code = Column(
-        String(17), index=True, nullable=False, comment="VIN码"
-    )
+    vin_code = Column(String(17), index=True, nullable=False, comment="VIN码")
     borrower = Column(String(100), nullable=False, comment="借用人")
     borrow_time = Column(Date, nullable=False, comment="借用时间")
     driver_name = Column(String(100), comment="司机姓名")
@@ -84,9 +82,7 @@ class BorrowRecord(Base):
     driver_performance = Column(String(100), comment="司机绩效（有效工时+有效里程）")
     record_creator = Column(String(50), comment="记录创建人")
     created_at = Column(Date, server_default=func.now(), comment="创建时间")
-    borrow_status = Column(
-        String(20), default="active", comment="借用状态"
-    )
+    borrow_status = Column(String(20), default="active", comment="借用状态")
     updated_at = Column(
         Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
     )
