@@ -26,7 +26,7 @@ async def create_record(
 
 
 # 2. 获取列表
-@router.get("/fixsearch", response_model=list[schemas.TestRecord])
+@router.get("/fixsearch")
 async def get_records(
     skip: int = 0,
     limit: int = 100,
@@ -37,7 +37,7 @@ async def get_records(
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
 ):
-    records = await services.get_test_records(
+    result = await services.get_test_records(
         db,
         skip=skip,
         limit=limit,
@@ -47,11 +47,11 @@ async def get_records(
         problem_category=problem_category,
         kpi_type=kpi_type,
     )
-    return {"message": "success", "code": 200, "data": records}
+    return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
 
 
 # 3. 获取单条详情
-@router.get("/getrecord/{record_id}", response_model=schemas.TestRecord)
+@router.get("/getrecord/{record_id}")
 async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
     record = await services.get_test_record(db, record_id=record_id)
     if isinstance(record, str):
@@ -60,7 +60,7 @@ async def get_record(record_id: int, db: AsyncSession = Depends(get_db)):
 
 
 # 4. 更新
-@router.put("/updaterecord/{record_id}", response_model=schemas.TestRecord)
+@router.put("/updaterecord/{record_id}")
 async def update_record(
     record_id: int, record: schemas.TestRecordUpdate, db: AsyncSession = Depends(get_db)
 ):
@@ -125,29 +125,29 @@ async def batch_export(
         problem_category=problem_category,
         kpi_type=kpi_type,
     )
-    
+
     if not export_data:
         return {"message": "没有找到符合条件的数据", "code": 400, "data": None}
-    
+
     # 创建Excel文件
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
     worksheet = workbook.add_worksheet("测试记录")
-    
+
     # 写入表头
     headers = export_data["headers"]
     for col, header in enumerate(headers):
         worksheet.write(0, col, header)
-    
+
     # 写入数据
     records = export_data["records"]
     for row, record in enumerate(records, start=1):
         for col, header in enumerate(headers):
             worksheet.write(row, col, record.get(header, ""))
-    
+
     workbook.close()
     output.seek(0)
-    
+
     # 返回Excel文件流
     return StreamingResponse(
         output,
@@ -156,3 +156,13 @@ async def batch_export(
             "Content-Disposition": "attachment; filename=test_records_export.xlsx"
         }
     )
+# 7. 刷新数据链接
+@router.post("/refresh_link")
+async def refresh_link(
+    db: AsyncSession = Depends(get_db)
+):
+    result = await services.refresh_link(db)
+    if isinstance(result, dict) and result.get("success"):
+        return {"message": "刷新成功", "code": 200, "data": result}
+    else:
+        return {"message": result if isinstance(result, str) else "刷新失败", "code": 400, "data": None}

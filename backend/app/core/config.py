@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "root"
+    MYSQL_PASSWORD: str = "123456"
     MYSQL_DATABASE: str = "data_platform_test"
 
     # Redis配置s
@@ -26,20 +26,32 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 20
 
-    # 1. 邮箱配置（核心！根据你的邮箱修改）
+    # 邮箱配置（核心！根据你的邮箱修改）
     # 发件人邮箱
-    MAIL_USERNAME: str = "3380170838@qq.com"
+    MAIL_USERNAME: str = "2634808@leapmotor.com"
     # 邮箱授权码（不是登录密码！）
-    MAIL_PASSWORD: str = "codywrmkfbqzchab"
+    MAIL_PASSWORD: str = "Sqy123456."
     # 发件人邮箱
-    MAIL_FROM: str = "3380170838@qq.com"
+    MAIL_FROM: str = "shang_qingyuan@leapmotor.com"
     # 发件人名称
     MAIL_FROM_NAME: str = "自动化测试平台官方"
     # SMTP 服务器地址
-    MAIL_SERVER: str = "smtp.qq.com"
+    MAIL_SERVER: str = "mail.leapmotor.com"
+    # 邮箱是否需要 STARTTLS 加密
+    MAIL_STARTTLS: bool = True
+    # 邮箱是否需要 SSL 加密
+    MAIL_SSL_TLS: bool = False
+    # 邮箱是否需要验证证书
+    VALIDATE_CERTS: bool = True
+    # 邮箱是否需要使用认证
+    USE_CREDENTIALS: bool = True
     # SMTP 端口（465 是 SSL 安全端口）
-    MAIL_PORT: int = 465
-    
+    MAIL_PORT: int = 587
+
+
+
+
+    # 高级搜索配置
     ADVANCED_OPERATORS_MAP: dict = {
         # 高级搜索支持的操作符（使用 SQLAlchemy 正确语法）
         "icontains": lambda x, y: x.ilike(f"%{y}%"),  # 包含（不区分大小写）

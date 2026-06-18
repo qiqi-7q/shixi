@@ -1,3 +1,4 @@
+from cgitb import text
 import enum
 
 from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
@@ -75,10 +76,10 @@ class TestRecord(Base):
     )  # KPI项，打分使用
     problem_scene = Column(String(100), comment="问题场景")  # 对应一级
     problem_type = Column(String(100), comment="问题分类")
-    problem_phenomenon = Column(String(100), comment="问题现象")  # 对应四级
+    problem_phenomenon = Column(Text, comment="问题现象")  # 对应四级
     takeover_type = Column(String(100), comment="接管类型")
     problem_time = Column(DateTime, nullable=False, comment="问题时间")
-    vin_code = Column(String(50), index=True, nullable=False, comment="车辆VIN号")
+    vin_code = Column(String(17), index=True, nullable=False, comment="车辆VIN号")
     data_link = Column(String(500), comment="数据链接")
     wetrack_link = Column(String(500), comment="Wetrack链接")
     analyze_result = Column(Text, comment="分析结果")
