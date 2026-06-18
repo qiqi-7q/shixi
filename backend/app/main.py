@@ -9,6 +9,7 @@ from app.core.redis_client import redisserve
 from app.core.scheduler import stop_scheduler
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
