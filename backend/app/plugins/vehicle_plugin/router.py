@@ -23,9 +23,9 @@ async def get_vehicle_overview(
     vin_code: Optional[str] = Query(None, description="VIN码"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="车辆状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中）"
     ),
-    test_status: Optional[str] = Query(None, description="测试状态"),
+    test_status: Optional[str] = Query(None, description="车辆状态"),
     start_date: Optional[str] = Query(
         None, description="统计起始日期（格式：YYYY-MM-DD）"
     ),
@@ -54,9 +54,9 @@ async def get_vehicle_utilization(
     vin_code: Optional[str] = Query(None, description="VIN码（模糊匹配）"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="车辆状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中）"
     ),
-    test_status: Optional[str] = Query(None, description="测试状态"),
+    test_status: Optional[str] = Query(None, description="车辆状态"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="结束日期 (YYYY-MM-DD)"),
 ):
@@ -85,9 +85,9 @@ async def get_status_distribution(
     vin_code: Optional[str] = Query(None, description="VIN码"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="车辆状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中）"
     ),
-    test_status: Optional[str] = Query(None, description="测试状态"),
+    test_status: Optional[str] = Query(None, description="车辆状态"),
 ):
     """获取车辆状态分布（饼图）"""
     data = await services.VehicleStatsService.get_status_distribution(
@@ -117,8 +117,21 @@ async def get_vehicles(
 
     if conditions:
         for cond in conditions:
-            field_name = cond["advanced_field"]
-            operator = cond["advanced_operator"]
+            # 支持多种字段名格式
+            field_name = cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            operator = cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            field_value = cond.get("advanced_value") or cond.get("value")
+
+            if not field_name:
+                return {
+                    "message": "条件中缺少字段名（advanced_field/field/column）",
+                    "code": 400,
+                }
+            if not operator:
+                return {
+                    "message": f"字段 {field_name} 缺少操作符（advanced_operator/operator/op）",
+                    "code": 400,
+                }
 
             # 时间字段只支持 between/not_between 操作符
             if field_name in TIME_FIELDS and operator not in ("between", "not_between"):
@@ -130,8 +143,8 @@ async def get_vehicles(
             # between/not_between 的值必须是数组
             if operator in ("between", "not_between"):
                 if (
-                    not isinstance(cond.get("advanced_value"), list)
-                    or len(cond["advanced_value"]) != 2
+                    not isinstance(field_value, list)
+                    or len(field_value) != 2
                 ):
                     return {
                         "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
