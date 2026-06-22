@@ -10,6 +10,7 @@ class TestMilesBase(BaseModel):
     vin_code: str
     test_function: Optional[str] = None
     mileage: Optional[float] = None
+    driving_mileage: Optional[float] = None
     is_kpi: Optional[bool] = False
     remarks: Optional[str] = None
 
@@ -25,6 +26,7 @@ class TestMilesUpdate(BaseModel):
     vin_code: Optional[str] = None
     test_function: Optional[str] = None
     mileage: Optional[float] = None
+    driving_mileage: Optional[float] = None
     is_kpi: Optional[bool] = None
     remarks: Optional[str] = None
 

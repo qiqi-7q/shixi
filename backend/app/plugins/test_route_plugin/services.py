@@ -42,11 +42,10 @@ class TestRouteService:
         db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
+        test_func: Optional[str] = None,
+        diff: Optional[int] = None,
         location: Optional[str] = None,
-        route_name: Optional[str] = None,
-        route_desc: Optional[str] = None,
-        route_feature: Optional[str] = None,
-        creator: Optional[str] = None,
+        order_by_length: Optional[str] = None
     ) -> dict:
         stmt = select(models.TestRoute)
 
@@ -54,14 +53,10 @@ class TestRouteService:
         # 筛选条件
         if location:
             stmt = stmt.filter(models.TestRoute.location.contains(location))
-        if route_name:
-            stmt = stmt.filter(models.TestRoute.route_name.contains(route_name))
-        if route_desc:
-            stmt = stmt.filter(models.TestRoute.route_desc.contains(route_desc))
-        if route_feature:
-            stmt = stmt.filter(models.TestRoute.route_feature.contains(route_feature))
-        if creator:
-            stmt = stmt.filter(models.TestRoute.creator.contains(creator))
+        if test_func:
+            stmt = stmt.filter(models.TestRoute.test_func.contains(test_func))
+        if diff is not None:
+            stmt = stmt.filter(models.TestRoute.diff == diff)
         
         # 统计总数
         from sqlalchemy import func
@@ -69,8 +64,16 @@ class TestRouteService:
         total_result = await db.execute(count_stmt)
         total = total_result.scalar_one()
         
+        # 排序
+        if order_by_length == "asc":
+            stmt = stmt.order_by(models.TestRoute.route_length.asc())
+        elif order_by_length == "desc":
+            stmt = stmt.order_by(models.TestRoute.route_length.desc())
+        else:
+            stmt = stmt.order_by(models.TestRoute.id.desc())
+        
         # 分页查询
-        stmt = stmt.offset(skip).limit(limit).order_by(models.TestRoute.id.desc())
+        stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         items = list(result.scalars().all())
         

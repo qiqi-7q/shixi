@@ -9,7 +9,7 @@ class EmployeeBase(BaseModel):
     module_name: Optional[str] = None
     module_manager: Optional[str] = None
     job_type: Optional[Literal["司机", "外协"]] = None
-
+    task: Optional[str] = None
 
 class EmployeeCreate(EmployeeBase):
     pass
@@ -20,7 +20,8 @@ class EmployeeUpdate(BaseModel):
     module_name: Optional[str] = None
     module_manager: Optional[str] = None
     job_type: Optional[Literal["司机", "外协"]] = None
-
+    task: Optional[str] = None
+    
 
 class Employee(EmployeeBase):
     id: int

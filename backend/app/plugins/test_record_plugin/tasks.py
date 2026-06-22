@@ -10,11 +10,19 @@ logger.setLevel(logging.INFO)   # 设置日志级别为INFO，只记录INFO及�
 # 配置日志记录器，将日志写入scheduler.log文件
 if not logger.handlers:
     log_file = os.path.join(os.path.dirname(__file__), "scheduler.log")
-    if os.path.exists(log_file):
-        os.remove(log_file)  # 每次重启时清空日志
-    handler = logging.FileHandler(log_file, encoding="utf-8") # 创建一个文件处理器，将日志写入scheduler.log文件
-    handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")) # 设置日志格式
-    logger.addHandler(handler) # 将文件处理器添加到日志记录器中
+    # 尝试清空日志文件，如果失败则继续执行
+    try:
+        if os.path.exists(log_file):
+            os.remove(log_file)  # 每次重启时清空日志
+    except Exception as e:
+        logger.warning(f"无法清空日志文件 {log_file}: {e}")
+    
+    try:
+        handler = logging.FileHandler(log_file, encoding="utf-8") # 创建一个文件处理器，将日志写入scheduler.log文件
+        handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")) # 设置日志格式
+        logger.addHandler(handler) # 将文件处理器添加到日志记录器中
+    except Exception as e:
+        logger.error(f"无法创建日志文件处理器: {e}")
 
 
 async def refresh_data_links_job():

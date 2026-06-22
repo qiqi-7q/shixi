@@ -27,21 +27,19 @@ async def get_routes_simple(
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
+    test_func: Optional[str] = None,
+    diff: Optional[int] = None,
     location: Optional[str] = None,
-    route_name: Optional[str] = None,
-    route_desc: Optional[str] = None,
-    route_feature: Optional[str] = None,
-    creator: Optional[str] = None,
+    order_by_length: Optional[str] = None
 ):
     result = await services.TestRouteService.get_test_routes_simple(
         db,
         skip=skip,
         limit=limit,
-        location = location,
-        route_name=route_name,
-        route_desc=route_desc,
-        route_feature=route_feature,
-        creator=creator,
+        test_func=test_func,
+        diff=diff,
+        location=location,
+        order_by_length=order_by_length,
     )
     return {"data": result, "code": 200, "message": "success"}
 
