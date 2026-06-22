@@ -49,6 +49,10 @@ def handle_data(ws):
 
         # 第二步：非空行，正常处理数据
         row_data = {}
+        # 保存原始Excel行号（ws.iter_rows返回的是row对象，可以通过row[0].row获取行号）
+        if row:
+            row_data['_original_row_num'] = row[0].row
+        
         for idx, header in enumerate(headers):
             if idx >= len(row):
                 row_data[header] = None

@@ -1,4 +1,11 @@
-from cgitb import text
+try:
+    from cgitb import text
+except ImportError:
+    # Python 3.13+ 移除了 cgitb，提供兼容层
+    def text(info, context=5):
+        import traceback
+        return ''.join(traceback.format_exception(*info))
+
 import enum
 
 from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
