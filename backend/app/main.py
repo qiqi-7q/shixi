@@ -43,9 +43,6 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "data_analysis", "app.plugins.data_analysis_plugin.plugin"
     )
-    await plugin_manager.register_plugin(
-        "project_plan", "app.plugins.project_plan_plugin.plugin"
-    )
 
     yield
     # 关闭时执行
