@@ -306,22 +306,27 @@ async def batch_import_records(file, db: AsyncSession):
             except Exception as e:
                 # 获取原始Excel行号（如果记录中保存了的话），否则显示当前索引
                 original_row_num = item_dict.get("_original_row_num", idx + 2)
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"第{original_row_num}行数据格式错误：{str(e)}",
-                )
+                return {
+                    "code": 400,
+                    "message": f"第{original_row_num}行数据格式错误：{str(e)}",
+                    "data": None,
+                }
 
         # 6. 批量写入数据库：使用异步方法，事务安全
         success_count = 0
         if valid_records:
             try:
                 for record in valid_records:
-                    db.add(models.TestRecord(**record.dict()))
+                    db.add(models.TestRecord(**record.model_dump()))
                 await db.commit()
                 success_count = len(valid_records)
             except Exception as e:
                 await db.rollback()
-                raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
+                return {
+                    "code": 400,
+                    "message": f"数据库写入失败：{str(e)}",
+                    "data": None,
+                }
 
         # 7. 根据导入结果返回清晰的消息
         if success_count == total_excel_rows:
