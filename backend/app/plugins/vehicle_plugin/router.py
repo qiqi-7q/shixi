@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.vehicle_plugin import models, schemas, services
+from app.utils.data_collection import parse_url_query
 
 from app.utils.vehicle_excel_import import process_vehicle_excel_upload
 
@@ -262,6 +263,14 @@ async def vehicle_import(file: UploadFile, db: AsyncSession = Depends(get_db)):
     """
     result = await process_vehicle_excel_upload(file, db)
     return result
+
+
+@router.post("/usage_rate")
+async def get_usage_rate(
+    url: str = Query(..., description="URL参数"),
+):
+    params = parse_url_query(url)
+    return {"data": params, "message": "success", "code": 200}
 
 
 borrow_router = APIRouter()
