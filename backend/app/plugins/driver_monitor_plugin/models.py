@@ -1,7 +1,8 @@
 import enum
-
+from app.core.database import Base
 from sqlalchemy import Column, DECIMAL, Date, DateTime, Enum, Integer, String, Text
 from sqlalchemy.sql import func
+
 
 
 class DriverStatus(enum.Enum):

@@ -16,7 +16,8 @@
 | `test_time` | Datetime (ISO 8601) | 测试时间 |
 | `vin_code` | String | 测试车辆VIN号 |
 | `test_function` | String / null | 测试功能 |
-| `mileage` | Float / null | 里程 |
+| `mileage` | Float / null | 功能测试里程 |
+| `driving_mileage` | Float / null | 车辆行驶里程 |
 | `is_kpi` | Boolean | 是否用于KPI统计 (默认 false) |
 | `remarks` | String / null | 备注 |
 | `created_at` | Datetime (ISO 8601) | 创建时间 |
@@ -38,7 +39,8 @@
 | `vin_code` | String | **是** | 车辆VIN号 |
 | `test_version` | String | 否 | 测试版本 |
 | `test_function` | String | 否 | 测试功能 |
-| `mileage` | Float | 否 | 里程 |
+| `mileage` | Float | 否 | 功能测试里程 |
+| `driving_mileage` | Float | 否 | 车辆行驶里程 |
 | `is_kpi` | Boolean | 否 | 是否用于KPI统计 |
 | `remarks` | String | 否 | 备注 |
 
@@ -54,6 +56,7 @@
   "test_version": "v1.0.0",
   "test_function": "自动驾驶测试",
   "mileage": 150.5,
+  "driving_mileage": 200.0,
   "is_kpi": true,
   "remarks": "正常完成"
 }
@@ -71,6 +74,7 @@
     "vin_code": "VIN1234567890ABCD",
     "test_function": "自动驾驶测试",
     "mileage": 150.5,
+    "driving_mileage": 200.0,
     "is_kpi": true,
     "remarks": "正常完成",
     "id": 1,
@@ -157,6 +161,7 @@
     "vin_code": "VIN1234567890ABCD",
     "test_function": "自动驾驶测试",
     "mileage": 150.5,
+    "driving_mileage": 200.0,
     "is_kpi": true,
     "remarks": "正常完成",
     "id": 1,
@@ -182,7 +187,8 @@
 | `vin_code` | String | 否 | 新的车辆VIN号 |
 | `test_version` | String | 否 | 新的测试版本 |
 | `test_function` | String | 否 | 新的测试功能 |
-| `mileage` | Float | 否 | 新的里程 |
+| `mileage` | Float | 否 | 新的功能测试里程 |
+| `driving_mileage` | Float | 否 | 新的车辆行驶里程 |
 | `is_kpi` | Boolean | 否 | 新的KPI统计状态 |
 | `remarks` | String | 否 | 新的备注 |
 

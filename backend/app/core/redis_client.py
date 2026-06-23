@@ -1,20 +1,26 @@
-import uuid
-
 from redis.asyncio import ConnectionPool, Redis
-
+import uuid
 from app.core.config import settings
 
 
 class RedisService:
 
     def __init__(self):
-        self.redis_pool = ConnectionPool.from_url(
-            f"{settings.REDIS_URL}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
-            password=settings.REDIS_PASSWORD,
-        )
-        self.redis_client = Redis(
-            connection_pool=self.redis_pool, decode_responses=True, max_connections=30
-        )
+        # 使用连接池管理Redis连接
+        connection_kwargs = {
+            "host": settings.REDIS_HOST,
+            "port": settings.REDIS_PORT,
+            "db": settings.REDIS_DB,
+            "decode_responses": True,
+            "max_connections": 30,
+            "protocol": 2,  # 强制使用 RESP2 协议，解决 Redis 7+ 的 HELLO 认证问题
+        }
+
+        if settings.REDIS_PASSWORD:
+            connection_kwargs["password"] = settings.REDIS_PASSWORD
+
+        self.redis_pool = ConnectionPool(**connection_kwargs)
+        self.redis_client = Redis(connection_pool=self.redis_pool)
 
     async def set_data(self, key: str, value: str, expire_seconds: int = 1800):
         """存储数据到Redis"""
@@ -28,14 +34,12 @@ class RedisService:
         """从Redis删除数据"""
         await self.redis_client.delete(key)
 
-    # 检查数据是否存在
     async def exists_data(self, key: str) -> bool:
         """检查数据是否存在"""
         return await self.redis_client.exists(key) == 1
 
-    # 分布式锁
     async def acquire_lock(self, lock_key: str, expire_seconds: int = 5):
-        """获取锁"""
+        """获取分布式锁"""
         client_id = str(uuid.uuid4())
         return (
             client_id
@@ -45,9 +49,8 @@ class RedisService:
             else None
         )
 
-    # lua脚本，用于释放锁或检查锁是否被释放
     async def lua_script(self, lock_key: str, client_id: str):
-        """执行lua脚本"""
+        """执行lua脚本释放锁"""
         script = """
             if redis.call('GET', KEYS[1]) == ARGV[1] then
                 return redis.call('DEL', KEYS[1])
@@ -102,7 +105,6 @@ class RedisService:
         except Exception as e:
             return f"Redis连接异常: {str(e)}"
 
-    # 断开Redis连接
     async def close_conn(self):
         """断开Redis连接"""
         await self.redis_client.close()

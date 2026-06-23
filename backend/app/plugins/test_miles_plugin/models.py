@@ -13,7 +13,8 @@ class TestMiles(Base):
     test_time = Column(DateTime, nullable=False, index=True, comment="测试时间")
     vin_code = Column(String(17), index=True, nullable=False, comment="测试车辆 VIN")
     test_function = Column(String(200), index=True, comment="测试功能")
-    mileage = Column(Float, comment="里程（取测试里程和实际里程的较小值）")
+    mileage = Column(Float, comment="功能测试里程")
+    driving_mileage = Column(Float, comment="车辆行驶里程")
     is_kpi = Column(Boolean, default=False, comment="是否用于 KPI 统计")
     remarks = Column(Text, comment="备注")
 

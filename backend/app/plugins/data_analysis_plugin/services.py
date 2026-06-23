@@ -806,6 +806,18 @@ class DataAnalysis:
 
         return [analysis_info1, analysis_info2]
 
+    @staticmethod
+    async def delete_analysis_data(db: AsyncSession, analysis_id: int):
+        if not analysis_id:
+            return "分析数据ID不能为空"
+        stmt = await db.get(KpiMain, analysis_id)
+        if not stmt:
+            return "分析数据不存在"
+        stmt.is_del = True
+        await db.commit()
+        await db.refresh(stmt)
+        return "success"
+
     # ====================== 可视化统计接口 ======================
     @staticmethod
     async def get_analysis_overview(

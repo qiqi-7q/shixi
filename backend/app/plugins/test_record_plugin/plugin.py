@@ -29,4 +29,4 @@ class TestRecordPlugin(BasePlugin):
             scheduler.start()
             logger.info("定时任务调度器已启动")
 
-        setup_refresh_link_scheduler(scheduler, interval_minutes=10)
+        setup_refresh_link_scheduler(scheduler, interval_minutes=30)

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
     MYSQL_USER: str = "root"
-    MYSQL_PASSWORD: str = "root"
+    MYSQL_PASSWORD: str = "123456"
     MYSQL_DATABASE: str = "data_platform_test"
 
     # Redis配置s
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://127.0.0.1"
     REDIS_DB: int = 0
-    REDIS_PASSWORD: Optional[str] = "redis123"
+    REDIS_PASSWORD: Optional[str] = None
     # JWT配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"

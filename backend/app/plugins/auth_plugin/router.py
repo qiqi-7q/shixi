@@ -93,8 +93,8 @@ async def logout(
         return {"code": 401, "message": "Could not validate credentials", "data": None}
     
     # 将token加入黑名单
-    RedisService.blacklist_token(token)
-    RedisService.delete_token(current_user.id)
+    await redisserve.blacklist_token(token)
+    await redisserve.delete_token(current_user.id)
     return {"code": 200, "message": "登出成功", "data": current_user.full_name}
 
 
