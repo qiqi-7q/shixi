@@ -557,45 +557,71 @@ async def batch_export_records(
     if not records:
         return None
 
-    # 定义Excel表头（与导入时的表头一致）
+    # 定义Excel表头（中文表头，与导入时的表头一致）
     headers = [
-        "project",
-        "car_type",
-        "function_mode",
-        "problem_desc",
-        "problem_category",
-        "kpi_type",
-        "problem_scene",
-        "problem_type",
-        "problem_phenomenon",
-        "takeover_type",
-        "problem_time",
-        "vin_code",
-        "data_link",
-        "wetrack_link",
-        "analyze_result",
-        "analyze_user",
-        "analyze_attach",
-        "software_version",
-        "remarks",
-        "created_at",
-        "updated_at",
+        "项目",
+        "车型",
+        "功能模式",
+        "问题描述",
+        "评价维度",
+        "KPI项",
+        "问题场景",
+        "问题分类",
+        "问题现象",
+        "接管类型",
+        "问题时间",
+        "车辆VIN号",
+        "数据链接",
+        "Wetrack链接",
+        "分析结果",
+        "分析人员",
+        "分析附件",
+        "软件版本",
+        "备注",
+        "创建时间",
+        "更新时间",
     ]
 
-    # 转换记录为字典列表（将枚举值转换为存储的名称）
+    # 字段名映射：中文表头到英文字段名
+    field_mapping = {
+        "项目": "project",
+        "车型": "car_type",
+        "功能模式": "function_mode",
+        "问题描述": "problem_desc",
+        "评价维度": "problem_category",
+        "KPI项": "kpi_type",
+        "问题场景": "problem_scene",
+        "问题分类": "problem_type",
+        "问题现象": "problem_phenomenon",
+        "接管类型": "takeover_type",
+        "问题时间": "problem_time",
+        "车辆VIN号": "vin_code",
+        "数据链接": "data_link",
+        "Wetrack链接": "wetrack_link",
+        "分析结果": "analyze_result",
+        "分析人员": "analyze_user",
+        "分析附件": "analyze_attach",
+        "软件版本": "software_version",
+        "备注": "remarks",
+        "创建时间": "created_at",
+        "更新时间": "updated_at",
+    }
+
+    # 转换记录为字典列表（将枚举值转换为中文值）
     record_dicts = []
     for record in records:
         record_dict = {}
-        for field in headers:
-            value = getattr(record, field)
-            # 如果是枚举类型，转换为枚举名称（数据库存储的格式）
+        for cn_header in headers:
+            field_name = field_mapping[cn_header]
+            value = getattr(record, field_name)
+            # 如果是枚举类型，转换为中文值（显示给用户看）
             if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
-                record_dict[field] = value.name  # 获取枚举名称（英文）
+                record_dict[cn_header] = value.value  # 获取中文值
             # 如果是日期时间类型，转换为字符串格式
             elif isinstance(value, (datetime, date, time)):
-                record_dict[field] = value.strftime("%Y-%m-%d %H:%M:%S")
+                record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                record_dict[field] = value
+                record_dict[cn_header] = value
         record_dicts.append(record_dict)
 
     return {"headers": headers, "records": record_dicts}
