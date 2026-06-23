@@ -15,8 +15,8 @@ class VehicleBase(BaseModel):
     owner_name: str = Field(..., max_length=100, description="车主权限")
     plate_number: str = Field(..., max_length=20, description="车牌号")
     group: Optional[VehicleGroup] = Field(None, description="组别")
-    vehicle_status: Optional[VehicleStatus] = Field(None, description="车辆状态")
-    test_status: Optional[TestStatus] = Field(None, description="测试状态")
+    vehicle_status: Optional[VehicleStatus] = Field(None, description="使用状态")
+    test_status: Optional[TestStatus] = Field(None, description="车辆状态")
     # 可选字段
     vehicle_stage: Optional[str] = Field(None, max_length=20, description="车辆阶段")
     configuration: Optional[str] = Field(None, max_length=200, description="车辆配置")
@@ -49,8 +49,8 @@ class VehicleUpdate(BaseModel):
     parking_location: Optional[str] = Field(
         None, max_length=200, description="停车地点"
     )
-    vehicle_status: Optional[VehicleStatus] = Field(None, description="车辆状态")
-    test_status: Optional[TestStatus] = Field(None, description="测试状态")
+    vehicle_status: Optional[VehicleStatus] = Field(None, description="使用状态")
+    test_status: Optional[TestStatus] = Field(None, description="车辆状态")
     engine_num: Optional[str] = Field(
         None, max_length=100, description="驱动电机号/发动机号"
     )
