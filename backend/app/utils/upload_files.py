@@ -54,16 +54,6 @@ async def upload_file(
 
     # 所有分片到齐，检查是否已合并完成
     final_path = upload_dir / file.filename
-    if final_path.exists():
-        for p in chunk_dir.iterdir():
-            p.unlink(missing_ok=True)
-        chunk_dir.rmdir()
-        return {
-            "code": 200,
-            "message": "文件已合并完成",
-            "file_url": f"/uploads/{SET_DIR}/{file.filename}",
-            "merged": True,
-        }
 
     # 获取 Redis 分布式锁，协调多进程/多协程并发
     lock_key = f"upload:merge:{fileMd5}"
@@ -77,6 +67,8 @@ async def upload_file(
         }
 
     try:
+        # 删除Redis中对应的键
+        await redisserve.delete_data(f"project_plan:{file.filename}")
         # 双重检查（锁内重新统计，防止分片在等锁期间被清理）
         uploaded = sorted(int(p.name.split("_", 1)[1]) for p in chunk_dir.iterdir())
         if len(uploaded) < totalChunk:
@@ -104,10 +96,12 @@ async def upload_file(
                 return {
                     "code": 400,
                     "message": f"文件大小校验失败，期望 {totalSize} 字节，实际 {total_written} 字节",
+                    "data": None,
                 }
 
-        # 原子 rename 到最终位置
+        # 覆盖已有同名文件，再原子 rename 到最终位置
         upload_dir.mkdir(parents=True, exist_ok=True)
+        final_path.unlink(missing_ok=True)
         tmp_path.rename(final_path)
 
         # 清理临时分片
@@ -120,6 +114,7 @@ async def upload_file(
             "message": "文件上传并合并完成",
             "file_url": f"/uploads/{SET_DIR}/{file.filename}",
             "merged": True,
+            "data": None,
         }
 
     except FileExistsError:

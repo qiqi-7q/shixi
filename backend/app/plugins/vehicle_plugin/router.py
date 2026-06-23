@@ -9,8 +9,6 @@ from app.core.database import get_db
 from app.plugins.vehicle_plugin import models, schemas, services
 from app.utils.data_collection import parse_url_query
 
-from app.utils.vehicle_excel_import import process_vehicle_excel_upload
-
 router = APIRouter()
 
 
@@ -119,8 +117,12 @@ async def get_vehicles(
     if conditions:
         for cond in conditions:
             # 支持多种字段名格式
-            field_name = cond.get("advanced_field") or cond.get("field") or cond.get("column")
-            operator = cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
             field_value = cond.get("advanced_value") or cond.get("value")
 
             if not field_name:
@@ -143,10 +145,7 @@ async def get_vehicles(
 
             # between/not_between 的值必须是数组
             if operator in ("between", "not_between"):
-                if (
-                    not isinstance(field_value, list)
-                    or len(field_value) != 2
-                ):
+                if not isinstance(field_value, list) or len(field_value) != 2:
                     return {
                         "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
                         "code": 400,
@@ -274,7 +273,7 @@ async def vehicle_import(file: UploadFile, db: AsyncSession = Depends(get_db)):
     """
     批量本地数据导入（上传Excel文件）
     """
-    result = await process_vehicle_excel_upload(file, db)
+    result = await services.VehicleService.process_vehicle_excel_upload(file, db)
     return result
 
 
