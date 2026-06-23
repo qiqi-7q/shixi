@@ -146,6 +146,53 @@ async def delete_test_record(db: AsyncSession, record_id: int):
 REPEAT_CHECK_FIELDS = ["vin_code", "problem_time", "problem_desc"]
 # -----------------------------------------------------------------------------
 
+# ---------------------- 中文表头到英文字段名的映射 ----------------------
+CHINESE_FIELD_MAPPING = {
+    "项目": "project",
+    "车型": "car_type",
+    "功能模式": "function_mode",
+    "问题描述": "problem_desc",
+    "评价维度": "problem_category",
+    "KPI项": "kpi_type",
+    "问题场景": "problem_scene",
+    "问题分类": "problem_type",
+    "问题现象": "problem_phenomenon",
+    "接管类型": "takeover_type",
+    "问题时间": "problem_time",
+    "车辆VIN号": "vin_code",
+    "数据链接": "data_link",
+    "Wetrack链接": "wetrack_link",
+    "分析结果": "analyze_result",
+    "分析人员": "analyze_user",
+    "分析附件": "analyze_attach",
+    "软件版本": "software_version",
+    "备注": "remarks"
+}
+# -----------------------------------------------------------------------------
+
+
+def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
+    """
+    将中文表头转换为英文字段名
+    :param excel_records: 原始Excel数据（可能包含中文或英文字段名）
+    :return: 转换后的数据（统一使用英文字段名）
+    """
+    transformed_records = []
+    for record in excel_records:
+        transformed = {}
+        for cn_header, en_field in CHINESE_FIELD_MAPPING.items():
+            # 优先查找中文表头
+            if cn_header in record:
+                transformed[en_field] = record[cn_header]
+            # 其次查找英文表头（保持向后兼容）
+            elif en_field in record:
+                transformed[en_field] = record[en_field]
+        # 保留原始行号信息
+        if '_original_row_num' in record:
+            transformed['_original_row_num'] = record['_original_row_num']
+        transformed_records.append(transformed)
+    return transformed_records
+
 
 # ---------------------- 核心工具函数：生成数据的唯一标识键 ----------------------
 def generate_unique_key(data_dict: dict) -> Tuple:
@@ -200,19 +247,36 @@ async def batch_import_records(file, db: AsyncSession):
         except Exception as e:
             return f"Excel数据处理失败：{str(e)}"
 
-        # 2.5 转换枚举字段：将英文名称转换为中文值（数据库存储的是枚举名称，Pydantic验证需要枚举值）
-        for record in excel_records:
-            # 转换 problem_category
-            if 'problem_category' in record and record['problem_category']:
-                pc_value = record['problem_category'].strip().upper()
-                if pc_value in EvaluationDimension.__members__:
-                    record['problem_category'] = EvaluationDimension[pc_value].value
+        # 2.5 中文表头转换：支持中文表头导入（保持向后兼容）
+        excel_records = transform_chinese_headers(excel_records)
 
-            # 转换 kpi_type
+        # 2.6 转换枚举字段：支持中英文输入，统一转换为中文值（Pydantic需要中文值进行验证）
+        # - 英文枚举名（如 RELIABILITY）→ 转换为中文值（如 可靠性）
+        # - 中文值（如 可靠性）→ 直接使用（保持不变）
+        for record in excel_records:
+            # 转换 problem_category（评价维度）
+            if 'problem_category' in record and record['problem_category']:
+                pc_value = record['problem_category'].strip()
+                # 先检查是否已经是英文枚举名，转换为中文值
+                pc_upper = pc_value.upper()
+                if pc_upper in EvaluationDimension.__members__:
+                    record['problem_category'] = EvaluationDimension[pc_upper].value  # 获取中文值
+                # 再检查是否已经是有效的中文值（保持不变）
+                elif pc_value not in [e.value for e in EvaluationDimension]:
+                    # 既不是英文枚举名也不是有效中文值，清空字段（由后续Pydantic验证报错）
+                    record['problem_category'] = None
+
+            # 转换 kpi_type（KPI项）
             if 'kpi_type' in record and record['kpi_type']:
-                kt_value = record['kpi_type'].strip().upper()
-                if kt_value in KPIType.__members__:
-                    record['kpi_type'] = KPIType[kt_value].value
+                kt_value = record['kpi_type'].strip()
+                # 先检查是否已经是英文枚举名，转换为中文值
+                kt_upper = kt_value.upper()
+                if kt_upper in KPIType.__members__:
+                    record['kpi_type'] = KPIType[kt_upper].value  # 获取中文值
+                # 再检查是否已经是有效的中文值（保持不变）
+                elif kt_value not in [e.value for e in KPIType]:
+                    # 既不是英文枚举名也不是有效中文值，清空字段（由后续Pydantic验证报错）
+                    record['kpi_type'] = None
 
         # 3. 第一重去重：内存去重，过滤Excel内的重复数据
         unique_records: List[dict] = []
@@ -551,29 +615,55 @@ async def batch_export_records(
     if not records:
         return None
 
-    # 定义Excel表头（与导入时的表头一致）
+    # 定义Excel表头（中文表头，与导入时的表头一致）
     headers = [
-        "project", "car_type", "function_mode", "problem_desc",
-        "problem_category", "kpi_type", "problem_scene", "problem_type",
-        "problem_phenomenon", "takeover_type", "problem_time", "vin_code",
-        "data_link", "wetrack_link", "analyze_result", "analyze_user",
-        "analyze_attach", "software_version", "remarks", "created_at", "updated_at"
+        "项目", "车型", "功能模式", "问题描述",
+        "评价维度", "KPI项", "问题场景", "问题分类",
+        "问题现象", "接管类型", "问题时间", "车辆VIN号",
+        "数据链接", "Wetrack链接", "分析结果", "分析人员",
+        "分析附件", "软件版本", "备注", "创建时间", "更新时间"
     ]
 
-    # 转换记录为字典列表（将枚举值转换为存储的名称）
+    # 字段名映射：中文表头到英文字段名
+    field_mapping = {
+        "项目": "project",
+        "车型": "car_type",
+        "功能模式": "function_mode",
+        "问题描述": "problem_desc",
+        "评价维度": "problem_category",
+        "KPI项": "kpi_type",
+        "问题场景": "problem_scene",
+        "问题分类": "problem_type",
+        "问题现象": "problem_phenomenon",
+        "接管类型": "takeover_type",
+        "问题时间": "problem_time",
+        "车辆VIN号": "vin_code",
+        "数据链接": "data_link",
+        "Wetrack链接": "wetrack_link",
+        "分析结果": "analyze_result",
+        "分析人员": "analyze_user",
+        "分析附件": "analyze_attach",
+        "软件版本": "software_version",
+        "备注": "remarks",
+        "创建时间": "created_at",
+        "更新时间": "updated_at"
+    }
+
+    # 转换记录为字典列表（将枚举值转换为中文值）
     record_dicts = []
     for record in records:
         record_dict = {}
-        for field in headers:
-            value = getattr(record, field)
-            # 如果是枚举类型，转换为枚举名称（数据库存储的格式）
+        for cn_header in headers:
+            field_name = field_mapping[cn_header]
+            value = getattr(record, field_name)
+            # 如果是枚举类型，转换为中文值（显示给用户看）
             if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
-                record_dict[field] = value.name  # 获取枚举名称（英文）
+                record_dict[cn_header] = value.value  # 获取中文值
             # 如果是日期时间类型，转换为字符串格式
             elif isinstance(value, (datetime, date, time)):
-                record_dict[field] = value.strftime("%Y-%m-%d %H:%M:%S")
+                record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                record_dict[field] = value
+                record_dict[cn_header] = value
         record_dicts.append(record_dict)
 
     return {"headers": headers, "records": record_dicts}
