@@ -290,7 +290,11 @@ class VehicleService:
                 excel_records, headers = handle_excel_from_bytes(content)
                 total_excel_rows = len(excel_records)
             except Exception as e:
-                return f"Excel数据处理失败：{str(e)}"
+                return {
+                    "message": f"Excel数据处理失败：{str(e)}",
+                    "code": 400,
+                    "data": None,
+                }
 
             # 3. 单次遍历完成：中文表头映射 + 类型转换 + 枚举转换 + 内存去重
             transformed_records: List[dict] = []
