@@ -1,4 +1,7 @@
+import asyncio
 import io
+from typing import Optional
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
@@ -8,7 +11,11 @@ import xlsxwriter
 from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
-from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
+from app.plugins.test_record_plugin.models import (
+    FunctionMode,
+    EvaluationDimension,
+    KPIType,
+)
 
 router = APIRouter()
 
@@ -61,7 +68,7 @@ async def get_records_advanced(
 ):
     """
     获取测试记录列表（高级查询）
-    
+
     """
     if conditions:
         for cond in conditions:
@@ -100,7 +107,7 @@ async def get_records_advanced(
                     }
 
                 # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
-                if field_name in TIME_FIELDS: 
+                if field_name in TIME_FIELDS:
 
                     start_value = field_value[0]
                     end_value = field_value[1]
@@ -193,9 +200,13 @@ async def batch_export(
     project: Optional[str] = Query(None, description="项目筛选"),
     car_type: Optional[str] = Query(None, description="车型筛选"),
     function_mode: Optional[FunctionMode] = Query(None, description="功能模式筛选"),
-    problem_category: Optional[EvaluationDimension] = Query(None, description="评价维度筛选"),
+    problem_category: Optional[EvaluationDimension] = Query(
+        None, description="评价维度筛选"
+    ),
     kpi_type: Optional[KPIType] = Query(None, description="KPI类型筛选"),
-    record_ids: Optional[str] = Query(None, description="指定记录ID列表，用逗号分隔，如: 1,2,3"),
+    record_ids: Optional[str] = Query(
+        None, description="指定记录ID列表，用逗号分隔，如: 1,2,3"
+    ),
 ):
     """
     批量导出测试记录到Excel文件
@@ -207,14 +218,23 @@ async def batch_export(
     :param record_ids: 指定记录ID列表（优先使用），逗号分隔
     :return: Excel文件流
     """
+
     # 解析record_ids参数
     id_list = None
     if record_ids:
         try:
-            id_list = [int(id.strip()) for id in record_ids.split(",") if id.strip()]
+            id_list = [
+                int(id_str.strip())
+                for id_str in record_ids.split(",")
+                if id_str.strip()
+            ]
         except ValueError:
-            raise HTTPException(status_code=400, detail="record_ids参数格式错误，应为逗号分隔的数字列表")
-    
+            return {
+                "message": "record_ids参数格式错误，应为逗号分隔的数字列表",
+                "code": 400,
+                "data": None,
+            }
+
     # 查询数据
     export_data = await services.batch_export_records(
         db,
@@ -229,24 +249,68 @@ async def batch_export(
     if not export_data:
         return {"message": "没有找到符合条件的数据", "code": 400, "data": None}
 
-    # 创建Excel文件
-    output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output)
-    worksheet = workbook.add_worksheet("测试记录")
+    # # 创建Excel文件
+    # output = io.BytesIO()
+    # workbook = xlsxwriter.Workbook(output)
+    # worksheet = workbook.add_worksheet("测试记录")
+    #
+    # # 写入表头
+    # headers = export_data["headers"]
+    # for col, header in enumerate(headers):
+    #     worksheet.write(0, col, header)
+    #
+    # # 写入数据
+    # records = export_data["records"]
+    # for row, record in enumerate(records, start=1):
+    #     for col, header in enumerate(headers):
+    #         worksheet.write(row, col, record.get(header, ""))
+    #
+    # workbook.close()
+    # output.seek(0)
+    #
+    # # 返回Excel文件流
+    # return StreamingResponse(
+    #     output,
+    #     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    #     headers={
+    #         "Content-Disposition": "attachment; filename=test_records_export.xlsx"
+    #     },
+    # )
 
-    # 写入表头
-    headers = export_data["headers"]
-    for col, header in enumerate(headers):
-        worksheet.write(0, col, header)
+    # 限制最多同时3个导出任务
+    EXPORT_SEM = asyncio.Semaphore(3)
+    EXPORT_TIMEOUT = 30  # 30秒超时
 
-    # 写入数据
-    records = export_data["records"]
-    for row, record in enumerate(records, start=1):
-        for col, header in enumerate(headers):
-            worksheet.write(row, col, record.get(header, ""))
+    # 在后台线程中生成Excel文件（避免阻塞事件循环）
+    def _build_excel():
+        output1 = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output1, {"constant_memory": True})
+        worksheet = workbook.add_worksheet("测试记录")
 
-    workbook.close()
-    output.seek(0)
+        headers = export_data["headers"]
+        records = export_data["records"]
+
+        # 写入表头（整行写入）
+        worksheet.write_row(0, 0, headers)
+
+        # 写入数据（逐行写入，每次一行，比逐格写入快 N 倍）
+        for row, record in enumerate(records, start=1):
+            worksheet.write_row(row, 0, [record.get(h, "") for h in headers])
+
+        workbook.close()
+        output1.seek(0)
+        return output1
+
+    # 信号量控制并发导出任务，最多3个
+    async def run_export():
+        async with EXPORT_SEM:
+            return await asyncio.to_thread(_build_excel)
+
+    try:
+        # 等待导出任务完成，超时30秒
+        output = await asyncio.wait_for(run_export(), timeout=EXPORT_TIMEOUT)
+    except asyncio.TimeoutError:
+        return {"message": "导出超时", "code": 408, "data": None}
 
     # 返回Excel文件流
     return StreamingResponse(
@@ -254,15 +318,19 @@ async def batch_export(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": "attachment; filename=test_records_export.xlsx"
-        }
+        },
     )
+
+
 # 7. 刷新数据链接
 @router.post("/refresh_link")
-async def refresh_link(
-    db: AsyncSession = Depends(get_db)
-):
+async def refresh_link(db: AsyncSession = Depends(get_db)):
     result = await services.refresh_link(db)
     if isinstance(result, dict) and result.get("success"):
         return {"message": "刷新成功", "code": 200, "data": result}
     else:
-        return {"message": result if isinstance(result, str) else "刷新失败", "code": 400, "data": None}
+        return {
+            "message": result if isinstance(result, str) else "刷新失败",
+            "code": 400,
+            "data": None,
+        }
