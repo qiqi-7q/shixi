@@ -12,6 +12,10 @@ async def create_miles(data: schemas.TestMilesCreate, db: AsyncSession = Depends
     result = await services.create_test_miles(db=db, data=data)
     return {"code": 200, "data": result, "message": "里程记录创建成功"}
 
+@router.post("/get_cur_project")
+async def get_current_project(db: AsyncSession = Depends(get_db)):
+    result = await services.get_current_project(db)
+    return {"code": 200, "data": result, "message": "获取当前项目成功"}
 
 @router.get("/")
 async def get_miles_list(
@@ -28,32 +32,8 @@ async def get_miles_list(
     return {"code": 200, "data": result, "message": "获取里程记录列表成功"}
 
 
-@router.get("/{miles_id}")
-async def get_miles(miles_id: int, db: AsyncSession = Depends(get_db)):
-    result = await services.get_test_miles(db, miles_id=miles_id)
-    if result:
-        return {"code": 200, "data": result, "message": "获取里程记录成功"}
-    return {"code": 404, "data": None, "message": "里程记录不存在"}
-
-
-@router.put("/{miles_id}")
-async def update_miles(miles_id: int, data: schemas.TestMilesUpdate, db: AsyncSession = Depends(get_db)):
-    result = await services.update_test_miles(db, miles_id=miles_id, data=data)
-    if result:
-        return {"code": 200, "data": result, "message": "更新里程记录成功"}
-    return {"code": 404, "data": None, "message": "里程记录不存在"}
-
-
-@router.delete("/{miles_id}")
-async def delete_miles(miles_id: int, db: AsyncSession = Depends(get_db)):
-    result = await services.delete_test_miles(db, miles_id=miles_id)
-    if result:
-        return {"code": 200, "data": result, "message": "删除成功"}
-    return {"code": 404, "data": None, "message": "里程记录不存在"}
-
-
 # ==================== 统计接口 ====================
-@router.get("/stats/")
+@router.get("/stats")
 async def get_mileage_stats(
     start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
     end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
@@ -107,3 +87,29 @@ async def get_function_mileage(
     """获取功能里程统计"""
     result = await services.get_function_mileage(db, project=project, test_version=test_version, test_function=test_function, start_date=start_date, end_date=end_date)
     return {"code": 200, "data": {"function_mileage": result}, "message": "获取功能里程统计成功"}
+
+
+@router.get("/{miles_id}")
+async def get_miles(miles_id: int, db: AsyncSession = Depends(get_db)):
+    result = await services.get_test_miles(db, miles_id=miles_id)
+    if result:
+        return {"code": 200, "data": result, "message": "获取里程记录成功"}
+    return {"code": 404, "data": None, "message": "里程记录不存在"}
+
+
+@router.put("/{miles_id}")
+async def update_miles(miles_id: int, data: schemas.TestMilesUpdate, db: AsyncSession = Depends(get_db)):
+    result = await services.update_test_miles(db, miles_id=miles_id, data=data)
+    if result:
+        return {"code": 200, "data": result, "message": "更新里程记录成功"}
+    return {"code": 404, "data": None, "message": "里程记录不存在"}
+
+
+@router.delete("/{miles_id}")
+async def delete_miles(miles_id: int, db: AsyncSession = Depends(get_db)):
+    result = await services.delete_test_miles(db, miles_id=miles_id)
+    if result:
+        return {"code": 200, "data": result, "message": "删除成功"}
+    return {"code": 404, "data": None, "message": "里程记录不存在"}
+
+
