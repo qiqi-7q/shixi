@@ -19,6 +19,20 @@ from app.utils.handle_excel_testrecord import (
     handle_excel_from_bytes,
 )
 
+
+def _normalize_date_range(start_date: Optional[str] = None, end_date: Optional[str] = None) -> tuple:
+    """
+    规范化日期范围
+    - 如果是纯日期格式（YYYY-MM-DD），自动添加时间部分
+    - start_date: YYYY-MM-DD -> YYYY-MM-DD 00:00:00
+    - end_date: YYYY-MM-DD -> YYYY-MM-DD 23:59:59
+    """
+    if start_date and isinstance(start_date, str) and len(start_date) == 10:
+        start_date = f"{start_date} 00:00:00"
+    if end_date and isinstance(end_date, str) and len(end_date) == 10:
+        end_date = f"{end_date} 23:59:59"
+    return start_date, end_date
+
 # ============================================================
 # Excel 中文表头 → Pydantic 英文字段名映射
 # ============================================================
@@ -429,7 +443,7 @@ class BorrowService:
         model: Optional[str] = None,
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
-        driver_name: Optional[str] = None,
+        driver_name: Optional[str] = None
     ) -> dict:
         stmt = select(models.BorrowRecord)
         if borrow_status:
@@ -515,7 +529,7 @@ class BorrowService:
                 models.BorrowRecord.vehicle_id == vehicle_id,
                 models.BorrowRecord.borrow_status == "active",
             )
-        )
+        ).order_by(models.BorrowRecord.id.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -699,12 +713,15 @@ class VehicleStatsService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> list:
-        """获取每辆车的借用次数统计
+        """获取每种车型的借用次数统计
         计算逻辑：
-        - 每辆车的借用次数：同一车辆同一天多次借用只算一次
-        - 总借用次数：所有符合条件车辆的借用次数之和
-        - 占比：该车借用次数 / 总借用次数 * 100%
+        - 每种车型的借用次数：该车型下所有车辆的借用次数之和（同一车辆同一天多次借用只算一次）
+        - 总借用次数：所有符合条件车型的借用次数之和
+        - 占比：该车型借用次数 / 总借用次数 * 100%
         """
+        # 规范化日期范围
+        start_date, end_date = _normalize_date_range(start_date, end_date)
+
         # 1. 构建车辆筛选条件
         vehicle_filters = []
         if model:
@@ -740,11 +757,10 @@ class VehicleStatsService:
         vehicle_subq = select(
             models.Vehicle.id,
             models.Vehicle.model,
-            models.Vehicle.vehicle_code,
-            models.Vehicle.vin_code,
         )
         if vehicle_filters:
             vehicle_subq = vehicle_subq.where(*vehicle_filters)
+        vehicle_sub = vehicle_subq.subquery()
 
         # 3. 计算每辆车的借用次数（去重：同一天多次借用算一次）
         borrow_subq = select(
@@ -753,52 +769,49 @@ class VehicleStatsService:
                 "borrow_count"
             ),
         )
-
         if start_date:
             borrow_subq = borrow_subq.where(
                 models.BorrowRecord.borrow_time >= start_date
             )
         if end_date:
             borrow_subq = borrow_subq.where(models.BorrowRecord.borrow_time <= end_date)
+        borrow_sub = borrow_subq.group_by(models.BorrowRecord.vehicle_id).subquery()
 
-        borrow_subq = borrow_subq.group_by(models.BorrowRecord.vehicle_id).subquery()
-
-        # 4. 关联查询：车辆信息 + 借用次数
-        # 将子查询保存到变量，避免每次调用 .subquery() 创建新对象
-        vehicle_sub = vehicle_subq.subquery()
-
-        stmt = select(
-            vehicle_sub.c.id.label("vehicle_id"),
+        # 4. 关联查询：车辆信息 + 借用次数，然后按车型汇总
+        # 先关联车辆和借用记录，得到每辆车的借用次数
+        vehicle_borrow_subq = select(
             vehicle_sub.c.model,
-            vehicle_sub.c.vehicle_code,
-            vehicle_sub.c.vin_code,
-            func.coalesce(borrow_subq.c.borrow_count, 0).label("borrow_count"),
+            func.coalesce(borrow_sub.c.borrow_count, 0).label("borrow_count"),
         ).select_from(
             vehicle_sub.outerjoin(
-                borrow_subq, vehicle_sub.c.id == borrow_subq.c.vehicle_id
+                borrow_sub, vehicle_sub.c.id == borrow_sub.c.vehicle_id
             )
         )
+        vehicle_borrow_sub = vehicle_borrow_subq.subquery()
+
+        # 按车型汇总借用次数
+        stmt = select(
+            vehicle_borrow_sub.c.model.label("model"),
+            func.sum(vehicle_borrow_sub.c.borrow_count).label("borrow_count"),
+        ).group_by(vehicle_borrow_sub.c.model)
 
         result = await db.execute(stmt)
-        vehicle_data = []
+        model_data = []
         total_borrow_count = 0
 
         for row in result.all():
             borrow_count = row.borrow_count
             total_borrow_count += borrow_count
-            vehicle_data.append(
+            model_data.append(
                 {
-                    "vehicle_id": row.vehicle_id,
                     "model": row.model,
-                    "vehicle_code": row.vehicle_code,
-                    "vin_code": row.vin_code,
                     "borrow_count": borrow_count,
-                    "proportion": 0,  # 占比后续计算
+                    "proportion": 0,
                 }
             )
 
-        # 5. 计算每辆车的借用占比
-        for item in vehicle_data:
+        # 5. 计算每种车型的借用占比
+        for item in model_data:
             if total_borrow_count > 0:
                 item["proportion"] = round(
                     item["borrow_count"] / total_borrow_count * 100, 2
@@ -807,12 +820,12 @@ class VehicleStatsService:
                 item["proportion"] = 0
 
         # 6. 按借用次数降序排序
-        vehicle_data.sort(key=lambda x: x["borrow_count"], reverse=True)
+        model_data.sort(key=lambda x: x["borrow_count"], reverse=True)
 
         return {
-            "items": vehicle_data,
+            "items": model_data,
             "total_borrow_count": total_borrow_count,
-            "total_vehicle_count": len(vehicle_data),
+            "total_model_count": len(model_data),
         }
 
     @staticmethod

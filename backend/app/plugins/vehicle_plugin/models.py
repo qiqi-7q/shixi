@@ -86,15 +86,15 @@ class BorrowRecord(Base):
     vehicle_code = Column(String(50), comment="车辆编号")
     vin_code = Column(String(17), index=True, nullable=False, comment="VIN码")
     borrower = Column(String(100), nullable=False, comment="借用人")
-    borrow_time = Column(Date, nullable=False, comment="借用时间")
+    borrow_time = Column(DateTime, nullable=False, comment="借用时间")
     driver_name = Column(String(100), comment="司机姓名")
     driver_work = Column(String(50), comment="司机工作安排")
     driver_performance = Column(String(100), comment="司机绩效（有效工时+有效里程）")
     record_creator = Column(String(50), comment="记录创建人")
-    created_at = Column(Date, server_default=func.now(), comment="创建时间")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
     borrow_status = Column(String(20), default="active", comment="借用状态")
     updated_at = Column(
-        Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
     )
     remarks = Column(Text, comment="备注")
     # 关联车辆

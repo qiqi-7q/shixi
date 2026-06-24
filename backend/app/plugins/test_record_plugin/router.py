@@ -1,11 +1,11 @@
 import io
-from typing import Optional
-
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from typing import Optional, List
+from datetime import datetime
+from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import xlsxwriter
-
+from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.test_record_plugin import schemas, services
 from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
@@ -36,6 +36,7 @@ async def get_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
+    software_version: Optional[str] = None
 ):
     result = await services.get_test_records(
         db,
@@ -46,8 +47,98 @@ async def get_records(
         function_mode=function_mode,
         problem_category=problem_category,
         kpi_type=kpi_type,
+        software_version=software_version,
     )
     return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
+
+TIME_FIELDS = {"created_at", "updated_at", "problem_time"}
+@router.post("/advsearch")
+async def get_records_advanced(
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(100, ge=1, le=1000, description="每页返回的记录数"),
+    conditions: Optional[List[dict]] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取测试记录列表（高级查询）
+    
+    """
+    if conditions:
+        for cond in conditions:
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
+            field_value = cond.get("advanced_value") or cond.get("value")
+
+            if not field_name:
+                return {
+                    "message": "条件中缺少字段名（advanced_field/field/column）",
+                    "code": 400,
+                }
+            if not operator:
+                return {
+                    "message": f"字段 {field_name} 缺少操作符（advanced_operator/operator/op）",
+                    "code": 400,
+                }
+
+            # 时间字段只支持 between/not_between 操作符
+            if field_name in TIME_FIELDS and operator not in ("between", "not_between"):
+                return {
+                    "message": f"时间字段 {field_name} 只支持 between/not_between 操作符",
+                    "code": 400,
+                }
+
+            # between/not_between 的值必须是数组
+            if operator in ("between", "not_between"):
+                if not isinstance(field_value, list) or len(field_value) != 2:
+                    return {
+                        "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
+                        "code": 400,
+                    }
+
+                # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
+                if field_name in TIME_FIELDS: 
+
+                    start_value = field_value[0]
+                    end_value = field_value[1]
+
+                    # 处理开始时间：如果是纯日期，添加 00:00:00
+                    if isinstance(start_value, str) and len(start_value) == 10:
+                        start_value = f"{start_value} 00:00:00"
+
+                    # 处理结束时间：如果是纯日期，添加 23:59:59
+                    if isinstance(end_value, str) and len(end_value) == 10:
+                        end_value = f"{end_value} 23:59:59"
+
+                    # 更新条件中的值
+                    cond["value"] = [start_value, end_value]
+                    # 如果使用的是 advanced_value，也需要更新
+                    if "advanced_value" in cond:
+                        cond["advanced_value"] = [start_value, end_value]
+
+            if field_name not in schemas.TEST_RECORD_WHITELIST:
+                return {
+                    "message": f"无效的字段: {field_name} ",
+                    "code": 400,
+                }
+            if operator not in settings.ADVANCED_OPERATORS:
+                return {
+                    "message": f"无效的操作: {operator} ",
+                    "code": 400,
+                }
+
+    records = await services.get_test_records_adv(
+        db,
+        skip=skip,
+        limit=limit,
+        conditions=conditions,
+    )
+    return {"data": records, "message": "success", "code": 200}
+
+############################
 
 
 # 3. 获取单条详情

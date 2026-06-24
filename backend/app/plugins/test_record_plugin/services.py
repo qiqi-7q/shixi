@@ -17,6 +17,7 @@ from app.utils.handle_excel_testrecord import (
     generate_unique_key,
     handle_excel_from_bytes,
 )
+from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
 
 
@@ -39,6 +40,46 @@ async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate)
     return "success"
 
 
+async def get_test_records_adv(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    conditions: Optional[List[dict]] = None,
+) -> dict:
+    stmt = select(models.TestRecord)
+    if conditions:
+        get_condition = []
+
+        for cond in conditions:
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
+            value = cond.get("advanced_value") or cond.get("value")
+
+            condition = build_condition(models.TestRecord, field_name, operator, value)
+            if condition is not None:
+                get_condition.append(condition)
+
+        stmt = stmt.where(and_(*get_condition))
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
+    result = await db.execute(stmt)
+    return {
+        "items": list(result.scalars().all()),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+
 # 获取列表
 async def get_test_records(
     db: AsyncSession,
@@ -49,6 +90,7 @@ async def get_test_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
+    software_version: Optional[str] = None
 ):
     stmt = select(models.TestRecord)
     if project:
@@ -61,6 +103,8 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+    if software_version:
+        stmt = stmt.filter(models.TestRecord.software_version == software_version)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
