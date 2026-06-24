@@ -9,11 +9,11 @@ from app.plugins.vehicle_plugin.models import TestStatus, VehicleGroup, VehicleS
 class VehicleBase(BaseModel):
     """车辆基础模型 - 创建和更新时的核心字段"""
 
-    model: str = Field(..., max_length=100, description="车型")
-    vehicle_code: str = Field(..., max_length=50, description="车辆编号")
+    model: Optional[str] = Field(None, max_length=100, description="车型")
+    vehicle_code: Optional[str] = Field(None, max_length=50, description="车辆编号")
     vin_code: str = Field(..., max_length=17, description="VIN码")
-    owner_name: str = Field(..., max_length=100, description="车主权限")
-    plate_number: str = Field(..., max_length=20, description="车牌号")
+    owner_name: Optional[str] = Field(None, max_length=100, description="车主权限")
+    plate_number: Optional[str] = Field(None, max_length=20, description="车牌号")
     group: Optional[VehicleGroup] = Field(None, description="组别")
     vehicle_status: Optional[VehicleStatus] = Field(None, description="使用状态")
     test_status: Optional[TestStatus] = Field(None, description="车辆状态")
@@ -27,7 +27,7 @@ class VehicleBase(BaseModel):
         None, max_length=100, description="驱动电机号/发动机号"
     )
     temp_plate_expire_date: Optional[date] = Field(None, description="临牌到期时间")
-    temp_plate_count: int = 0
+    temp_plate_count: Optional[int] = None
     remarks: Optional[str] = None
 
 

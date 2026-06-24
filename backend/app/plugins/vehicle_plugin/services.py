@@ -37,11 +37,11 @@ EXCEL_FIELD_MAPPING: Dict[str, str] = {
     "驱动电机号/发动机号": "engine_num",
     "车牌号": "plate_number",
     "临牌到期时间": "temp_plate_expire_date",
-    "临牌已办理次数": "temp_plate_count",
+    "临牌已办次数": "temp_plate_count",
 }
 
 # 重复判定字段（vin_code + vehicle_code 组合唯一）
-REPEAT_VEHICLE_FIELDS = ["vin_code", "vehicle_code"]
+REPEAT_VEHICLE_FIELDS = ["vin_code"]
 
 # 需要强制转为字符串的字段（Excel 中纯数字列会被 openpyxl 读取为 int/float）
 STRING_FIELDS = (
@@ -247,16 +247,51 @@ class VehicleService:
             if cn_key in record:
                 transformed[en_key] = record[cn_key]
 
+        # 空值归一化：除 vin_code 外，空字符串统一转为 None
+        for key in list(transformed.keys()):
+            if key != "vin_code":
+                val = transformed[key]
+                if isinstance(val, str) and not val.strip():
+                    transformed[key] = None
+
         for field in STRING_FIELDS:
             if field in transformed and transformed[field] is not None:
                 if not isinstance(transformed[field], str):
                     transformed[field] = str(transformed[field])
+                transformed[field] = transformed[field].strip()
 
         for enum_field, lookup in ENUM_FIELD_LOOKUPS.items():
             if enum_field in transformed and transformed[enum_field] is not None:
                 raw = str(transformed[enum_field]).strip().upper()
                 if raw in lookup:
                     transformed[enum_field] = lookup[raw]
+
+        # 日期字段归一化：Excel 可能输出 datetime 对象或 2026/11/12 格式的字符串，可以为空；
+        # 如果输入2026/11/12，将转换为 2026-11-12；如果输入2026-11-12，就保留
+        if "temp_plate_expire_date" in transformed:
+            raw_date = transformed["temp_plate_expire_date"]
+            if raw_date is None:
+                transformed["temp_plate_expire_date"] = None
+            elif isinstance(raw_date, datetime):
+                transformed["temp_plate_expire_date"] = raw_date.strftime("%Y-%m-%d")
+            elif isinstance(raw_date, str):
+                stripped = raw_date.strip()
+                if stripped and "/" in stripped:
+                    transformed["temp_plate_expire_date"] = stripped.replace("/", "-")
+                elif stripped and "-" in stripped:
+                    transformed["temp_plate_expire_date"] = stripped
+                try:
+                    parts = transformed["temp_plate_expire_date"].split("-")
+                    if len(parts) == 3:
+                        transformed["temp_plate_expire_date"] = (
+                            f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+                        )
+                    else:
+                        transformed["temp_plate_expire_date"] = None
+                except (ValueError, TypeError):
+                    transformed["temp_plate_expire_date"] = None
+            else:
+                transformed["temp_plate_expire_date"] = None
 
         return transformed
 
@@ -404,7 +439,7 @@ class VehicleService:
                     "total_excel_rows": total_excel_rows,
                     "excel_duplicate_rows": excel_duplicate_count,
                     "db_duplicate_rows": db_duplicate_count,
-                    "success_import_rows": len(valid_records),
+                    "success_import_rows": len(final_records),
                     "failed_import_rows": 0,
                 },
             }

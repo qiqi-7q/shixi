@@ -543,6 +543,10 @@ async def batch_export_records(
     # 构建查询
     stmt = select(models.TestRecord)
 
+    # 如果提供了record_ids，在筛选结果中进一步按ID列表过滤
+    if record_ids:
+        stmt = stmt.filter(models.TestRecord.id.in_(record_ids))
+
     # 先应用筛选条件（始终生效）
     if project:
         stmt = stmt.filter(models.TestRecord.project.contains(project))
@@ -554,10 +558,6 @@ async def batch_export_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
-
-    # 如果提供了record_ids，在筛选结果中进一步按ID列表过滤
-    if record_ids and len(record_ids) > 0:
-        stmt = stmt.filter(models.TestRecord.id.in_(record_ids))
 
     # 执行查询
     result = await db.execute(stmt)
@@ -616,21 +616,54 @@ async def batch_export_records(
         "更新时间": "updated_at",
     }
 
-    # 转换记录为字典列表（将枚举值转换为中文值）
-    record_dicts = []
-    for record in records:
-        record_dict = {}
-        for cn_header in headers:
-            field_name = field_mapping[cn_header]
-            value = getattr(record, field_name)
-            # 如果是枚举类型，转换为中文值（显示给用户看）
-            if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
-                record_dict[cn_header] = value.value  # 获取中文值
-            # 如果是日期时间类型，转换为字符串格式
-            elif isinstance(value, (datetime, date, time)):
-                record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
-            else:
-                record_dict[cn_header] = value
-        record_dicts.append(record_dict)
+    # # 转换记录为字典列表（将枚举值转换为中文值）
+    # record_dicts = []
+    # for record in records:
+    #     record_dict = {}
+    #     for cn_header in headers:
+    #         field_name = field_mapping[cn_header]
+    #         value = getattr(record, field_name)
+    #         # 如果是枚举类型，转换为中文值（显示给用户看）
+    #         if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
+    #             record_dict[cn_header] = value.value  # 获取中文值
+    #         # 如果是日期时间类型，转换为字符串格式
+    #         elif isinstance(value, (datetime, date, time)):
+    #             record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
+    #         else:
+    #             record_dict[cn_header] = value
+    #     record_dicts.append(record_dict)
+    #
+    # return {"headers": headers, "records": record_dicts}
+
+    # 预计算枚举字段集合，避免每条记录逐字段 isinstance 判断
+    enum_fields = {"function_mode", "problem_category", "kpi_type"}
+
+    # 转换记录为字典列表（列表推导式，一次构建）
+    record_dicts = [
+        # 外层：遍历每条数据库记录
+        {
+            # 内层：遍历每个中文表头，构建 {中文表头: 值} 的字典
+            cn_header: (
+                # 1. 枚举字段：取 .value 获取中文值（如 "功能模式" -> "领航"）
+                getattr(record, field_mapping[cn_header]).value
+                if field_mapping[cn_header] in enum_fields
+                and getattr(record, field_mapping[cn_header]) is not None
+                else (
+                    # 2. 日期时间字段：格式化为字符串 "2026-01-15 10:30:00"
+                    getattr(record, field_mapping[cn_header]).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    if isinstance(
+                        getattr(record, field_mapping[cn_header]),
+                        (datetime, date, time),
+                    )
+                    # 3. 普通字段：直接取值（字符串、数字、None 等）
+                    else getattr(record, field_mapping[cn_header])
+                )
+            )
+            for cn_header in headers  # 遍历所有表头列
+        }
+        for record in records  # 遍历所有记录行
+    ]
 
     return {"headers": headers, "records": record_dicts}
