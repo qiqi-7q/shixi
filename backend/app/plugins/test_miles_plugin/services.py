@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from fastapi import HTTPException
 from app.plugins.test_miles_plugin import models, schemas
 from datetime import datetime
@@ -12,6 +12,10 @@ async def create_test_miles(db: AsyncSession, data: schemas.TestMilesCreate):
     await db.refresh(db_miles)
     return db_miles
 
+async def get_current_project(db: AsyncSession):
+    stmt = select(models.TestMiles.project).distinct()
+    result = await db.execute(stmt)
+    return result.scalars().all()
 
 async def get_test_miles_list(db: AsyncSession, skip: int = 0, limit: int = 100, project: str = None, test_version: str = None, test_function: str = None, test_start_date: str = None, test_end_date: str = None):
     """获取测试里程列表，支持分页和筛选条件"""
@@ -84,7 +88,6 @@ async def delete_test_miles(db: AsyncSession, miles_id: int):
 
 
 # ==================== 统计相关函数 ====================
-from sqlalchemy import func
 
 
 async def get_version_mileage(db: AsyncSession, project: str = None, test_version: str = None, test_function: str = None, start_date: str = None, end_date: str = None):
@@ -176,6 +179,7 @@ async def get_mileage_stats(db: AsyncSession, start_date: str = None, end_date: 
 
 async def get_mileage_overview(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None, test_version: str = None, test_function: str = None):
     """获取里程总览统计（总记录数、总里程、NAP、CNAP）"""
+
     stmt = select(
         func.count(models.TestMiles.id).label('total_records'),
         func.sum(models.TestMiles.mileage).label('total_mileage'),

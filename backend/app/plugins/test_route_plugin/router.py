@@ -39,7 +39,7 @@ async def get_routes_simple(
         test_func=test_func,
         diff=diff,
         location=location,
-        order_by_length=order_by_length,
+        order_by_length=order_by_length
     )
     return {"data": result, "code": 200, "message": "success"}
 

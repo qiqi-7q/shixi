@@ -1,8 +1,7 @@
 from datetime import datetime
+from typing import Optional, List, Any
 
-from typing import Optional
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.plugins.test_record_plugin.models import (
     FunctionMode,
@@ -75,3 +74,6 @@ class TestRecord(TestRecordBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# 获取TestRecord模型所有的字段
+TEST_RECORD_WHITELIST = set(TestRecord.model_fields.keys())

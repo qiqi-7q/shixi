@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.plugins.data_analysis_plugin.models import KpiItem, KpiMain, KpiModule
 from app.plugins.test_record_plugin.models import TestRecord
+from app.plugins.vehicle_plugin.models import Vehicle
 
 # ====================== 评分指标======================
 # 1. 可靠性
@@ -355,13 +356,26 @@ class DataAnalysis:
         if not test_records:
             return "无测试数据"
 
-        # 查询里程数据
+        # 查询该版本下的所有VIN码（从测试记录表获取，不区分车型）
+        test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
+            TestRecord.project == project,
+            TestRecord.software_version == version,
+            TestRecord.function_mode == funcMode,
+        )
+        test_record_vin_result = await db.execute(test_record_vin_stmt)
+        vehicle_vins = [row[0] for row in test_record_vin_result.all()]
+        
+        if not vehicle_vins:
+            return "该版本暂无车辆数据"
+
+        # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
         test_miles = await db.execute(
             select(TestMiles).where(
                 TestMiles.is_kpi == True,
                 TestMiles.project == project,
                 TestMiles.test_version == version,
                 TestMiles.test_function == funcMode,
+                TestMiles.vin_code.in_(vehicle_vins),
             )
         )
         test_miles_records = list(test_miles.scalars().all())
@@ -805,6 +819,254 @@ class DataAnalysis:
             return "统计数据不存在，请检查ID是否正确"
 
         return [analysis_info1, analysis_info2]
+
+    # ====================== 手动更新成功率指标 ======================
+    @staticmethod
+    async def update_success_rate(
+        db: AsyncSession,
+        project: str,
+        model: str,
+        version: str,
+        funcMode: str,
+        change_lane_success_rate: float,
+        inflow_success_rate: float,
+        outflow_success_rate: float,
+        diverge_converge_rate: float,
+        special_rate: float,
+        recog_rate: float,
+    ):
+        """
+        手动更新成功率指标并重新计算KPI得分
+        :param db: 数据库会话
+        :param project: 项目
+        :param model: 车型
+        :param version: 版本
+        :param funcMode: 功能模式
+        :param change_lane_success_rate: 变道成功率(0-100)
+        :param inflow_success_rate: 汇入成功率(0-100)
+        :param outflow_success_rate: 汇出成功率(0-100)
+        :param diverge_converge_rate: 分合流成功率(0-100)
+        :param special_rate: 特殊场景成功率(0-100)
+        :param recog_rate: 限速识别成功率(0-100)
+        """
+        try:
+            # 入参校验
+            if not project or not model or not version or not funcMode:
+                return "项目、车型、版本、功能不能为空"
+
+            # 检查是否存在对应的KPI主记录
+            main_stmt = select(KpiMain).where(
+                KpiMain.project == project,
+                KpiMain.carModel == model,
+                KpiMain.version == version,
+                KpiMain.funcMode == funcMode,
+            )
+            main_exists = await db.scalar(main_stmt)
+            if not main_exists:
+                return "未找到对应的KPI分析记录"
+
+            # 查询模块记录
+            module_stmt = select(KpiModule).where(KpiModule.main_id == main_exists.id)
+            module_exists = await db.scalar(module_stmt)
+            if not module_exists:
+                return "未找到对应的KPI模块记录"
+
+            # 查询测试记录获取其他KPI统计
+            test_rec = await db.execute(
+                select(TestRecord).where(
+                    TestRecord.project == project,
+                    TestRecord.car_type == model,
+                    TestRecord.software_version == version,
+                    TestRecord.function_mode == funcMode,
+                )
+            )
+            test_records = list(test_rec.scalars().all())
+
+            # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
+            test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
+                TestRecord.project == project,
+                TestRecord.software_version == version,
+                TestRecord.function_mode == funcMode,
+            )
+            test_record_vin_result = await db.execute(test_record_vin_stmt)
+            vehicle_vins = [row[0] for row in test_record_vin_result.all()]
+
+            test_miles = await db.execute(
+                select(TestMiles).where(
+                    TestMiles.is_kpi == True,
+                    TestMiles.project == project,
+                    TestMiles.test_version == version,
+                    TestMiles.test_function == funcMode,
+                    TestMiles.vin_code.in_(vehicle_vins) if vehicle_vins else True,
+                )
+            )
+            test_miles_records = list(test_miles.scalars().all())
+            total_test_miles = sum(rec.mileage for rec in test_miles_records)
+
+            # 统计KPI次数
+            kpi_stat = DataAnalysis.kpi_times_count(total_test_miles, test_records)
+
+            # 使用手动输入的成功率（转换为小数）
+            change_lane_success_rate = change_lane_success_rate / 100.0
+            inflow_success_rate = inflow_success_rate / 100.0
+            outflow_success_rate = outflow_success_rate / 100.0
+            diverge_converge_rate = diverge_converge_rate / 100.0
+            special_rate = special_rate / 100.0
+            recog_rate = recog_rate / 100.0
+
+            # 计算【可靠性】模块（不变）
+            exit_r, exit_w = DataAnalysis.calc_linear_kpi(kpi_stat["EXIT_ratio"], EXIT_CFG)
+            downgrade_r, downgrade_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["DOWNGRADE_ratio"], DOWNGRADE_CFG
+            )
+            unactivate_r, unactivate_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["UNACTIVATE_ratio"], UNACTIVATE_CFG
+            )
+            exception_r, exception_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["EXCEPTION_ratio"], EXCEPTION_CFG
+            )
+            reliability_s = exit_w + downgrade_w + unactivate_w + exception_w
+
+            # 计算【法规/安全性】模块（不变）
+            collision_r, collision_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["COLLISION_ratio"], COLLISION_CFG
+            )
+            crash_r, crash_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["CRASH_ratio"], CRASH_CFG
+            )
+            red_green_r, red_green_w = DataAnalysis.calc_red_green_kpi(
+                kpi_stat["RED_GREEN_SEVERE"], kpi_stat["RED_GREEN_GENERAL"]
+            )
+            over_low_r, over_low_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["OVER_LOW_ratio"], OVER_LOW_CFG
+            )
+            regulationsSafety_s = collision_w + crash_w + red_green_w + over_low_w
+
+            # 计算【舒适性】模块（不变）
+            lateral_r, lateral_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["LATERAL_ratio"], LATERAL_CFG
+            )
+            vertical_r, vertical_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["VERTICAL_ratio"], VERTICAL_CFG
+            )
+            comfort_s = lateral_w + vertical_w
+
+            # 计算【可用性】模块（使用手动输入的成功率）
+            changelane_r, cl_w = DataAnalysis.calc_changelane_kpi(
+                change_lane_success_rate,
+                kpi_stat["UNAVA_CHANGELANE"],
+                CHANGELANE_CFG,
+                UNAVA_CHANGELANE_CFG,
+            )
+            inflow_r, inflow_w = DataAnalysis.calc_linear_kpi(
+                inflow_success_rate, INFLOW_CFG
+            )
+            outflow_r, outflow_w = DataAnalysis.calc_linear_kpi(
+                outflow_success_rate, OUTFLOW_CFG
+            )
+            split_r, split_w = DataAnalysis.calc_linear_kpi(
+                diverge_converge_rate, DIVERGE_CONVERGE_CFG
+            )
+            special_r, special_w = DataAnalysis.calc_linear_kpi(special_rate, SPECIAL_CFG)
+            recog_r, recog_w = DataAnalysis.calc_linear_kpi(recog_rate, RECOG_CFG)
+            dropped_r, dropped_w = DataAnalysis.calc_dropped_kpi(kpi_stat["DROPPED"])
+            hm_r, hm_w = DataAnalysis.calc_human_machine_kpi(
+                kpi_stat["H_M_C"], kpi_stat["H_M_U"]
+            )
+            mo_r, mo_w = DataAnalysis.calc_micro_oa_kpi(
+                kpi_stat["MICRO_OA_FAIL"], kpi_stat["MICRO_OA_B"], kpi_stat["MICRO_OA_R"]
+            )
+            usability_s = (
+                cl_w
+                + inflow_w
+                + outflow_w
+                + split_w
+                + special_w
+                + recog_w
+                + dropped_w
+                + hm_w
+                + mo_w
+            )
+
+            # 计算总分
+            total_s = reliability_s + regulationsSafety_s + comfort_s + usability_s
+            total_s_2 = DataAnalysis.format_score(total_s)
+
+            # 更新KpiMain
+            main_exists.totalScore = total_s_2
+            await db.flush()
+
+            # 更新KpiModule
+            module_exists.reliability = reliability_s
+            module_exists.regulationsSafety = regulationsSafety_s
+            module_exists.comfort = comfort_s
+            module_exists.usability = usability_s
+            await db.flush()
+
+            # 更新KpiItem
+            kpi_items = await db.execute(
+                select(KpiItem).where(KpiItem.module_id == module_exists.id)
+            )
+            kpi_items = list(kpi_items.scalars().all())
+
+            kpi_score_map = {
+                "exit": (exit_r, exit_w),
+                "downgrade": (downgrade_r, downgrade_w),
+                "unactivate": (unactivate_r, unactivate_w),
+                "exception": (exception_r, exception_w),
+                "collision": (collision_r, collision_w),
+                "crash": (crash_r, crash_w),
+                "red_green": (red_green_r, red_green_w),
+                "over_low": (over_low_r, over_low_w),
+                "lateral": (lateral_r, lateral_w),
+                "vertical": (vertical_r, vertical_w),
+                "change_lane_s": (changelane_r, cl_w),
+                "inflow_s": (inflow_r, inflow_w),
+                "outflow_s": (outflow_r, outflow_w),
+                "diverge_converge_s": (split_r, split_w),
+                "special_s": (special_r, special_w),
+                "dropped_s": (dropped_r, dropped_w),
+                "recog_s": (recog_r, recog_w),
+                "hm_s": (hm_r, hm_w),
+                "mo_s": (mo_r, mo_w),
+            }
+
+            kpi_mpi_map = {
+                "exit": kpi_stat["EXIT_ratio"],
+                "downgrade": kpi_stat["DOWNGRADE_ratio"],
+                "unactivate": kpi_stat["UNACTIVATE_ratio"],
+                "exception": kpi_stat["EXCEPTION_ratio"],
+                "collision": kpi_stat["COLLISION_ratio"],
+                "crash": kpi_stat["CRASH_ratio"],
+                "red_green": kpi_stat["RED_GREEN_SEVERE"] + kpi_stat["RED_GREEN_GENERAL"],
+                "over_low": kpi_stat["OVER_LOW_ratio"],
+                "lateral": kpi_stat["LATERAL_ratio"],
+                "vertical": kpi_stat["VERTICAL_ratio"],
+                "change_lane_s": change_lane_success_rate,
+                "inflow_s": inflow_success_rate,
+                "outflow_s": outflow_success_rate,
+                "diverge_converge_s": diverge_converge_rate,
+                "special_s": special_rate,
+                "dropped_s": kpi_stat["DROPPED_ratio"],
+                "recog_s": recog_rate,
+                "hm_s": kpi_stat["H_M_C"] + kpi_stat["H_M_U"],
+                "mo_s": kpi_stat["MICRO_OA_FAIL"] + kpi_stat["MICRO_OA_B"] + kpi_stat["MICRO_OA_R"],
+            }
+
+            for item in kpi_items:
+                kpi_type = item.KPIType.lower() if isinstance(item.KPIType, str) else str(item.KPIType).lower()
+                if kpi_type in kpi_score_map:
+                    item.RawScore = kpi_score_map[kpi_type][0]
+                    item.KPIScore = kpi_score_map[kpi_type][1]
+                if kpi_type in kpi_mpi_map:
+                    item.MPI = kpi_mpi_map[kpi_type]
+
+            await db.commit()
+            return "success"
+
+        except Exception as e:
+            await db.rollback()
+            return f"更新失败，错误信息: {str(e)}"
 
     @staticmethod
     async def delete_analysis_data(db: AsyncSession, analysis_id: int):

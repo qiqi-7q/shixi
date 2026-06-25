@@ -16,7 +16,9 @@ from app.utils.handle_excel_testrecord import (
     build_enum_lookup,
     generate_unique_key,
     handle_excel_from_bytes,
+    handle_excel_some,
 )
+from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
 
 
@@ -39,6 +41,46 @@ async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate)
     return "success"
 
 
+async def get_test_records_adv(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    conditions: Optional[List[dict]] = None,
+) -> dict:
+    stmt = select(models.TestRecord)
+    if conditions:
+        get_condition = []
+
+        for cond in conditions:
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
+            value = cond.get("advanced_value") or cond.get("value")
+
+            condition = build_condition(models.TestRecord, field_name, operator, value)
+            if condition is not None:
+                get_condition.append(condition)
+
+        stmt = stmt.where(and_(*get_condition))
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
+    result = await db.execute(stmt)
+    return {
+        "items": list(result.scalars().all()),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+
 # 获取列表
 async def get_test_records(
     db: AsyncSession,
@@ -49,6 +91,7 @@ async def get_test_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
+    software_version: Optional[str] = None
 ):
     stmt = select(models.TestRecord)
     if project:
@@ -61,6 +104,8 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+    if software_version:
+        stmt = stmt.filter(models.TestRecord.software_version == software_version)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
@@ -141,101 +186,216 @@ CHINESE_FIELD_MAPPING = {
 # -----------------------------------------------------------------------------
 
 
-def transform_chinese_headers(record: dict) -> dict:
+def clean_string(value) -> str:
+    """
+    清理字符串中的特殊字符
+    - 移除不可见字符（换行符、制表符等）
+    - 移除首尾空白
+    - 处理全角/半角字符
+    """
+    if value is None:
+        return None
 
-    transformed = {}
-    FunctionMode_LOOKUP = build_enum_lookup(models.FunctionMode)
-    EvaluationDimension_LOOKUP = build_enum_lookup(models.EvaluationDimension)
-    KPIType_LOOKUP = build_enum_lookup(models.KPIType)
+    if not isinstance(value, str):
+        value = str(value)
 
-    ENUM_FIELD_LOOKUPS = {
-        "function_mode": FunctionMode_LOOKUP,
-        "problem_category": EvaluationDimension_LOOKUP,
-        "kpi_type": KPIType_LOOKUP,
-    }
+    # 移除不可见字符（保留基本的空白字符）
+    import re
+    # 移除控制字符（除了换行和制表符）
+    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', value)
+    # 移除首尾空白和不可见字符
+    cleaned = cleaned.strip()
+    # 移除首尾的特殊符号（如全角空格等）
+    cleaned = re.sub(r'^[\s\u3000]+|[\s\u3000]+$', '', cleaned)
 
-    for cn_key, en_key in CHINESE_FIELD_MAPPING.items():
-        if cn_key in record:
-            transformed[en_key] = record[cn_key]
+    return cleaned
 
-    # for field in STRING_FIELDS:
-    #     if field in transformed and transformed[field] is not None:
-    #         if not isinstance(transformed[field], str):
-    #             transformed[field] = str(transformed[field])
 
-    for enum_field, lookup in ENUM_FIELD_LOOKUPS.items():
-        if enum_field in transformed and transformed[enum_field] is not None:
-            raw = str(transformed[enum_field]).strip().upper()
-            if raw in lookup:
-                transformed[enum_field] = lookup[raw]
+def convert_chinese_date(date_value) -> str:
+    """
+    将各种日期格式转换为标准格式
+    支持：
+    - 中文日期：2026年6月22日 → 2026-06-22 00:00:00
+    - datetime对象：直接格式化
+    - Excel日期序列号：转换为日期
+    - 标准字符串：保持原样
+    """
+    import re
+    from datetime import datetime, date, timedelta
 
-    return transformed
+    # 如果是None，返回None
+    if date_value is None:
+        return None
+
+    # 如果是datetime/date对象，直接格式化
+    if isinstance(date_value, (datetime, date)):
+        return date_value.strftime("%Y-%m-%d %H:%M:%S")
+
+    # 如果是数字（Excel日期序列号），转换为datetime
+    if isinstance(date_value, (int, float)):
+        try:
+            # Excel日期序列号转换（1900年基准）
+            dt = datetime(1899, 12, 30) + timedelta(days=date_value)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            pass
+
+    # 如果是字符串，处理各种格式
+    date_str = str(date_value).strip()
+
+    # 清理特殊字符
+    date_str = clean_string(date_str)
+
+    # 尝试匹配中文日期
+    match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', date_str)
+    if match:
+        year = match.group(1)
+        month = match.group(2).zfill(2)
+        day = match.group(3).zfill(2)
+        return f"{year}-{month}-{day} 00:00:00"
+
+    # 尝试匹配标准日期格式
+    standard_formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d"
+    ]
+    for fmt in standard_formats:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+
+    # 无法识别的格式，返回原值（由后续Pydantic验证处理）
+    return date_str
+
+
+def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
+    """
+    将中文表头转换为英文字段名
+    :param excel_records: 原始Excel数据（可能包含中文或英文字段名）
+    :return: 转换后的数据（统一使用英文字段名）
+    """
+    transformed_records = []
+    for record in excel_records:
+        transformed = {}
+        for cn_header, en_field in CHINESE_FIELD_MAPPING.items():
+            # 优先查找中文表头
+            if cn_header in record:
+                value = record[cn_header]
+                # 清理字符串字段中的特殊字符（用于去重匹配）
+                if isinstance(value, str):
+                    value = clean_string(value)
+                # 特殊处理：software_version 字段确保为字符串类型
+                if en_field == 'software_version' and value is not None:
+                    value = str(value)
+                # 特殊处理：problem_time 字段，转换各种日期格式
+                if en_field == 'problem_time' and value is not None:
+                    value = convert_chinese_date(value)
+                transformed[en_field] = value
+            # 其次查找英文表头（保持向后兼容）
+            elif en_field in record:
+                value = record[en_field]
+                # 清理字符串字段中的特殊字符（用于去重匹配）
+                if isinstance(value, str):
+                    value = clean_string(value)
+                # 特殊处理：software_version 字段确保为字符串类型
+                if en_field == 'software_version' and value is not None:
+                    value = str(value)
+                # 特殊处理：problem_time 字段，转换各种日期格式
+                if en_field == 'problem_time' and value is not None:
+                    value = convert_chinese_date(value)
+                transformed[en_field] = value
+        # 保留原始行号信息
+        if '_original_row_num' in record:
+            transformed['_original_row_num'] = record['_original_row_num']
+        transformed_records.append(transformed)
+    return transformed_records
 
 
 # -----------------------------------------------------------------------------
 
 
 async def batch_import_records(file, db: AsyncSession):
-    # 1. 校验上传
-    if file is None:
-        return {"code": 400, "message": "文件上传失败：未接收到文件", "data": None}
-    if not file.filename:
-        return {"code": 400, "message": "文件上传失败：文件名为空", "data": None}
+    # 1. 入口参数强制校验
+    # 使用 duck typing 检查，避免类型导入问题
+    if not hasattr(file, 'filename') or not hasattr(file, 'read'):
+        return f"第一个参数必须是UploadFile对象，实际收到：{type(file)}"
+    if not isinstance(db, AsyncSession):
+        return f"第二个参数必须是数据库Session对象，实际收到：{type(db)}"
 
-    filename_lower = file.filename.lower()
-    if not (filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls")):
-        return {
-            "code": 400,
-            "message": "文件上传失败：仅支持 .xlsx 或 .xls 格式",
-            "data": None,
-        }
+    # 2. 保存上传的文件到临时目录
+    import tempfile
+    import os
+    from pathlib import Path
 
-    # 2. 从内存读取Excel文件内容
-    content = await file.read()
+    # 创建临时文件
+    temp_dir = tempfile.gettempdir()
+    temp_file_path = os.path.join(temp_dir, f"temp_import_{file.filename}")
 
     try:
-        # 读取Excel文件：自动过滤全空行
+        # 保存上传的文件内容到临时文件
+        with open(temp_file_path, "wb") as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+
+        # 2. 读取Excel文件：自动过滤全空行
         try:
-            excel_records, headers = handle_excel_from_bytes(content)
+            excel_records, headers = handle_excel_some(temp_file_path)
             total_excel_rows = len(excel_records)
         except Exception as e:
-            return {
-                "message": f"Excel数据处理失败：{str(e)}",
-                "code": 400,
-                "data": None,
-            }
-            # 3. 单次遍历完成：中文表头映射 + 类型转换 + 枚举转换 + 内存去重
-        transformed_records: List[dict] = []
+            return f"Excel数据处理失败：{str(e)}"
+
+        # 2.5 中文表头转换：支持中文表头导入（保持向后兼容）
+        excel_records = transform_chinese_headers(excel_records)
+
+        # 2.6 转换枚举字段：支持中英文输入，统一转换为中文值（Pydantic需要中文值进行验证）
+        # - 英文枚举名（如 RELIABILITY）→ 转换为中文值（如 可靠性）
+        # - 中文值（如 可靠性）→ 直接使用（保持不变）
+        for record in excel_records:
+            # 转换 problem_category（评价维度）
+            if 'problem_category' in record and record['problem_category']:
+                pc_value = record['problem_category'].strip()
+                # 先检查是否已经是英文枚举名，转换为中文值
+                pc_upper = pc_value.upper()
+                if pc_upper in EvaluationDimension.__members__:
+                    record['problem_category'] = EvaluationDimension[pc_upper].value  # 获取中文值
+                # 再检查是否已经是有效的中文值（保持不变）
+                elif pc_value not in [e.value for e in EvaluationDimension]:
+                    # 既不是英文枚举名也不是有效中文值，清空字段（由后续Pydantic验证报错）
+                    record['problem_category'] = None
+
+            # 转换 kpi_type（KPI项）
+            if 'kpi_type' in record and record['kpi_type']:
+                kt_value = record['kpi_type'].strip()
+                # 先检查是否已经是英文枚举名，转换为中文值
+                kt_upper = kt_value.upper()
+                if kt_upper in KPIType.__members__:
+                    record['kpi_type'] = KPIType[kt_upper].value  # 获取中文值
+                # 再检查是否已经是有效的中文值（保持不变）
+                elif kt_value not in [e.value for e in KPIType]:
+                    # 既不是英文枚举名也不是有效中文值，清空字段（由后续Pydantic验证报错）
+                    record['kpi_type'] = None
+
+        # 3. 第一重去重：内存去重，过滤Excel内的重复数据
+        unique_records: List[dict] = []
         seen_keys: Set[Tuple] = set()
         excel_duplicate_count = 0
 
         for record in excel_records:
-            transformed = transform_chinese_headers(record)
-            if transformed is None:
-                continue
-            unique_key = generate_unique_key(transformed, REPEAT_CHECK_FIELDS)
+            # 生成唯一标识键
+            unique_key = generate_unique_key(record, REPEAT_CHECK_FIELDS)
+            # 检查是否已经出现过
             if unique_key in seen_keys:
                 excel_duplicate_count += 1
                 continue
+            # 新数据，加入列表和集合
             seen_keys.add(unique_key)
-            transformed_records.append(transformed)
-
-        if not transformed_records:
-            return {
-                "code": 200,
-                "message": "导入完成（所有数据均为 Excel 内部重复）",
-                "data": {
-                    "msg": "无有效数据可导入",
-                    "total_excel_rows": total_excel_rows,
-                    "excel_duplicate_rows": excel_duplicate_count,
-                    "db_duplicate_rows": 0,
-                    "success_import_rows": 0,
-                    "failed_import_rows": 0,
-                },
-            }
-
-        # 3. 第一重去重已在上面完成（transformed_records），直接使用
-        unique_records = transformed_records
+            unique_records.append(record)
 
         # 4. 第二重去重：数据库去重，过滤已存在的重复数据
         if not unique_records:
@@ -263,17 +423,12 @@ async def batch_import_records(file, db: AsyncSession):
                 else:
                     # 处理时间字段：Excel中是字符串，数据库中是datetime，需要转换后比较
                     # 使用func.date_format将数据库datetime转换为字符串格式进行比较
-                    if field == "problem_time" and isinstance(value, str):
+                    if field == 'problem_time' and isinstance(value, str):
                         field_conditions.append(
-                            func.date_format(
-                                getattr(models.TestRecord, field), "%Y-%m-%d %H:%i:%s"
-                            )
-                            == value
+                            func.date_format(getattr(models.TestRecord, field), "%Y-%m-%d %H:%i:%s") == value
                         )
                     else:
-                        field_conditions.append(
-                            getattr(models.TestRecord, field) == value
-                        )
+                        field_conditions.append(getattr(models.TestRecord, field) == value)
             # 把单条数据的所有字段条件合并
             query_conditions.append(and_(*field_conditions))
 
@@ -285,9 +440,7 @@ async def batch_import_records(file, db: AsyncSession):
         existing_keys: Set[Tuple] = set()
         for record in existing_records:
             # 把数据库里的记录也转成唯一键，和Excel里的对比
-            record_dict = {
-                field: getattr(record, field) for field in REPEAT_CHECK_FIELDS
-            }
+            record_dict = {field: getattr(record, field) for field in REPEAT_CHECK_FIELDS}
             existing_key = generate_unique_key(record_dict, REPEAT_CHECK_FIELDS)
             existing_keys.add(existing_key)
 
@@ -309,28 +462,22 @@ async def batch_import_records(file, db: AsyncSession):
                 valid_records.append(record)
             except Exception as e:
                 # 获取原始Excel行号（如果记录中保存了的话），否则显示当前索引
-                original_row_num = item_dict.get("_original_row_num", idx + 2)
-                return {
-                    "code": 400,
-                    "message": f"第{original_row_num}行数据格式错误：{str(e)}",
-                    "data": None,
-                }
+                original_row_num = item_dict.get('_original_row_num', idx + 2)
+                raise HTTPException(
+                    status_code=400, detail=f"第{original_row_num}行数据格式错误：{str(e)}"
+                )
 
         # 6. 批量写入数据库：使用异步方法，事务安全
         success_count = 0
         if valid_records:
             try:
                 for record in valid_records:
-                    db.add(models.TestRecord(**record.model_dump()))
+                    db.add(models.TestRecord(**record.dict()))
                 await db.commit()
                 success_count = len(valid_records)
             except Exception as e:
                 await db.rollback()
-                return {
-                    "code": 400,
-                    "message": f"数据库写入失败：{str(e)}",
-                    "data": None,
-                }
+                raise HTTPException(status_code=400, detail=f"数据库写入失败：{str(e)}")
 
         # 7. 根据导入结果返回清晰的消息
         if success_count == total_excel_rows:
@@ -353,12 +500,16 @@ async def batch_import_records(file, db: AsyncSession):
             "success_import_rows": success_count,  # 最终成功上传的新数据行数
             "failed_import_rows": len(valid_records) - success_count,  # 导入失败行数
         }
-    except Exception as e:
-        return {"code": 400, "message": f"导入失败：{e}", "data": None}
-
+    finally:
+        # 清理临时文件
+        if os.path.exists(temp_file_path):
+            try:
+                os.remove(temp_file_path)
+            except Exception as e:
+                # 清理失败不影响主流程，仅记录日志
+                pass
 
 ###################### 刷新数据链接
-
 
 def convert_to_timestamp(date_obj):
     """将日期时间转换为秒级时间戳"""
@@ -568,27 +719,11 @@ async def batch_export_records(
 
     # 定义Excel表头（中文表头，与导入时的表头一致）
     headers = [
-        "项目",
-        "车型",
-        "功能模式",
-        "问题描述",
-        "评价维度",
-        "KPI项",
-        "问题场景",
-        "问题分类",
-        "问题现象",
-        "接管类型",
-        "问题时间",
-        "车辆VIN号",
-        "数据链接",
-        "Wetrack链接",
-        "分析结果",
-        "分析人员",
-        "分析附件",
-        "软件版本",
-        "备注",
-        "创建时间",
-        "更新时间",
+        "项目", "车型", "功能模式", "问题描述",
+        "评价维度", "KPI项", "问题场景", "问题分类",
+        "问题现象", "接管类型", "问题时间", "车辆VIN号",
+        "数据链接", "Wetrack链接", "分析结果", "分析人员",
+        "分析附件", "软件版本", "备注", "创建时间", "更新时间"
     ]
 
     # 字段名映射：中文表头到英文字段名
@@ -616,54 +751,21 @@ async def batch_export_records(
         "更新时间": "updated_at",
     }
 
-    # # 转换记录为字典列表（将枚举值转换为中文值）
-    # record_dicts = []
-    # for record in records:
-    #     record_dict = {}
-    #     for cn_header in headers:
-    #         field_name = field_mapping[cn_header]
-    #         value = getattr(record, field_name)
-    #         # 如果是枚举类型，转换为中文值（显示给用户看）
-    #         if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
-    #             record_dict[cn_header] = value.value  # 获取中文值
-    #         # 如果是日期时间类型，转换为字符串格式
-    #         elif isinstance(value, (datetime, date, time)):
-    #             record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
-    #         else:
-    #             record_dict[cn_header] = value
-    #     record_dicts.append(record_dict)
-    #
-    # return {"headers": headers, "records": record_dicts}
-
-    # 预计算枚举字段集合，避免每条记录逐字段 isinstance 判断
-    enum_fields = {"function_mode", "problem_category", "kpi_type"}
-
-    # 转换记录为字典列表（列表推导式，一次构建）
-    record_dicts = [
-        # 外层：遍历每条数据库记录
-        {
-            # 内层：遍历每个中文表头，构建 {中文表头: 值} 的字典
-            cn_header: (
-                # 1. 枚举字段：取 .value 获取中文值（如 "功能模式" -> "领航"）
-                getattr(record, field_mapping[cn_header]).value
-                if field_mapping[cn_header] in enum_fields
-                and getattr(record, field_mapping[cn_header]) is not None
-                else (
-                    # 2. 日期时间字段：格式化为字符串 "2026-01-15 10:30:00"
-                    getattr(record, field_mapping[cn_header]).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                    if isinstance(
-                        getattr(record, field_mapping[cn_header]),
-                        (datetime, date, time),
-                    )
-                    # 3. 普通字段：直接取值（字符串、数字、None 等）
-                    else getattr(record, field_mapping[cn_header])
-                )
-            )
-            for cn_header in headers  # 遍历所有表头列
-        }
-        for record in records  # 遍历所有记录行
-    ]
+    # 转换记录为字典列表（将枚举值转换为中文值）
+    record_dicts = []
+    for record in records:
+        record_dict = {}
+        for cn_header in headers:
+            field_name = field_mapping[cn_header]
+            value = getattr(record, field_name)
+            # 如果是枚举类型，转换为中文值（显示给用户看）
+            if isinstance(value, (FunctionMode, EvaluationDimension, KPIType)):
+                record_dict[cn_header] = value.value  # 获取中文值
+            # 如果是日期时间类型，转换为字符串格式
+            elif isinstance(value, (datetime, date, time)):
+                record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                record_dict[cn_header] = value
+        record_dicts.append(record_dict)
 
     return {"headers": headers, "records": record_dicts}

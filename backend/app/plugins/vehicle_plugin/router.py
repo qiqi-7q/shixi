@@ -152,6 +152,26 @@ async def get_vehicles(
                         "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
                         "code": 400,
                     }
+                # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
+                if field_name in TIME_FIELDS: 
+
+                    start_value = field_value[0]
+                    end_value = field_value[1]
+
+                    # 处理开始时间：如果是纯日期，添加 00:00:00
+                    if isinstance(start_value, str) and len(start_value) == 10:
+                        start_value = f"{start_value} 00:00:00"
+
+                    # 处理结束时间：如果是纯日期，添加 23:59:59
+                    if isinstance(end_value, str) and len(end_value) == 10:
+                        end_value = f"{end_value} 23:59:59"
+
+                    # 更新条件中的值
+                    cond["value"] = [start_value, end_value]
+                    # 如果使用的是 advanced_value，也需要更新
+                    if "advanced_value" in cond:
+                        cond["advanced_value"] = [start_value, end_value]
+            
 
             if field_name not in schemas.VEHICLE_WHITELIST:
                 return {
@@ -334,7 +354,7 @@ async def get_borrow_records_simple(
     vin_code: Optional[str] = None,
     borrow_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    driver_name: Optional[str] = None,
+    driver_name: Optional[str] = None
 ):
     """获取借用记录列表"""
     records = await services.BorrowService.get_borrow_records_simple(
@@ -389,6 +409,25 @@ async def get_borrow_records(
                         "code": 400,
                         "data": None,
                     }
+                # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
+                if field_name in TIME_FIELDS: 
+
+                    start_value = field_value[0]
+                    end_value = field_value[1]
+
+                    # 处理开始时间：如果是纯日期，添加 00:00:00
+                    if isinstance(start_value, str) and len(start_value) == 10:
+                        start_value = f"{start_value} 00:00:00"
+
+                    # 处理结束时间：如果是纯日期，添加 23:59:59
+                    if isinstance(end_value, str) and len(end_value) == 10:
+                        end_value = f"{end_value} 23:59:59"
+
+                    # 更新条件中的值
+                    cond["value"] = [start_value, end_value]
+                    # 如果使用的是 advanced_value，也需要更新
+                    if "advanced_value" in cond:
+                        cond["advanced_value"] = [start_value, end_value]
 
             if field_name not in schemas.BORROW_WHITELIST:
                 return {
