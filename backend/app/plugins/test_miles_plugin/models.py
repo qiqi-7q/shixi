@@ -10,7 +10,10 @@ class TestMiles(Base):
     
     project = Column(String(100), nullable=False, index=True, comment="项目")
     test_version = Column(String(50), index=True, comment="测试版本")
-    test_time = Column(DateTime, nullable=False, index=True, comment="测试时间")
+    # test_time = Column(DateTime, nullable=False, index=True, comment="测试时间")
+    test_start_time = Column(DateTime, nullable=False, index=True, comment="测试开始时间")
+    test_end_time = Column(DateTime, nullable=False, index=True, comment="测试结束时间")
+    
     vin_code = Column(String(17), index=True, nullable=False, comment="测试车辆 VIN")
     test_function = Column(String(200), index=True, comment="测试功能")
     mileage = Column(Float, comment="功能测试里程")

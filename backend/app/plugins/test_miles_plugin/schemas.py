@@ -6,7 +6,10 @@ from datetime import datetime
 class TestMilesBase(BaseModel):
     project: str
     test_version: Optional[str] = None
-    test_time: datetime
+    # test_time: datetime
+    test_start_time: datetime
+    test_end_time: datetime
+
     vin_code: str
     test_function: Optional[str] = None
     mileage: Optional[float] = None
@@ -22,7 +25,10 @@ class TestMilesCreate(TestMilesBase):
 class TestMilesUpdate(BaseModel):
     project: Optional[str] = None
     test_version: Optional[str] = None
-    test_time: Optional[datetime] = None
+    # test_time: Optional[datetime] = None
+    test_start_time: Optional[datetime] = None
+    test_end_time: Optional[datetime] = None
+    
     vin_code: Optional[str] = None
     test_function: Optional[str] = None
     mileage: Optional[float] = None
