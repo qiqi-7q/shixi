@@ -356,26 +356,19 @@ class DataAnalysis:
         if not test_records:
             return "无测试数据"
 
-        # 查询该车型对应的所有VIN码（优先从车辆表获取）
-        vehicle_vin_stmt = select(Vehicle.vin_code).where(Vehicle.model == model)
-        vehicle_vin_result = await db.execute(vehicle_vin_stmt)
-        vehicle_vins = [row[0] for row in vehicle_vin_result.all()]
+        # 查询该版本下的所有VIN码（从测试记录表获取，不区分车型）
+        test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
+            TestRecord.project == project,
+            TestRecord.software_version == version,
+            TestRecord.function_mode == funcMode,
+        )
+        test_record_vin_result = await db.execute(test_record_vin_stmt)
+        vehicle_vins = [row[0] for row in test_record_vin_result.all()]
         
-        # 如果车辆表中没有数据，从测试记录表中获取该车型对应的VIN码
         if not vehicle_vins:
-            test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
-                TestRecord.car_type == model,
-                TestRecord.project == project,
-                TestRecord.software_version == version,
-                TestRecord.function_mode == funcMode,
-            )
-            test_record_vin_result = await db.execute(test_record_vin_stmt)
-            vehicle_vins = [row[0] for row in test_record_vin_result.all()]
-            
-            if not vehicle_vins:
-                return "该车型暂无车辆数据"
+            return "该版本暂无车辆数据"
 
-        # 查询里程数据（按车型对应的VIN码过滤）
+        # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
         test_miles = await db.execute(
             select(TestMiles).where(
                 TestMiles.is_kpi == True,
@@ -889,20 +882,14 @@ class DataAnalysis:
             )
             test_records = list(test_rec.scalars().all())
 
-            # 查询里程数据
-            vehicle_vin_stmt = select(Vehicle.vin_code).where(Vehicle.model == model)
-            vehicle_vin_result = await db.execute(vehicle_vin_stmt)
-            vehicle_vins = [row[0] for row in vehicle_vin_result.all()]
-            
-            if not vehicle_vins:
-                test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
-                    TestRecord.car_type == model,
-                    TestRecord.project == project,
-                    TestRecord.software_version == version,
-                    TestRecord.function_mode == funcMode,
-                )
-                test_record_vin_result = await db.execute(test_record_vin_stmt)
-                vehicle_vins = [row[0] for row in test_record_vin_result.all()]
+            # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
+            test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
+                TestRecord.project == project,
+                TestRecord.software_version == version,
+                TestRecord.function_mode == funcMode,
+            )
+            test_record_vin_result = await db.execute(test_record_vin_stmt)
+            vehicle_vins = [row[0] for row in test_record_vin_result.all()]
 
             test_miles = await db.execute(
                 select(TestMiles).where(

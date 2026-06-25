@@ -16,6 +16,7 @@ from app.utils.handle_excel_testrecord import (
     build_enum_lookup,
     generate_unique_key,
     handle_excel_from_bytes,
+    handle_excel_some,
 )
 from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
@@ -316,26 +317,6 @@ def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
     return transformed_records
 
 
-# ---------------------- 核心工具函数：生成数据的唯一标识键 ----------------------
-def generate_unique_key(data_dict: dict) -> Tuple:
-    """
-    根据配置的重复判定字段，生成数据的唯一标识元组
-    元组可哈希，可用于集合去重、数据库查询
-    """
-    key_values = []
-    for field in REPEAT_CHECK_FIELDS:
-        # 处理空值，确保None和空字符串的一致性
-        value = data_dict.get(field)
-        # 处理datetime对象，转换为统一的字符串格式
-        if isinstance(value, (datetime, date, time)):
-            value = value.strftime("%Y-%m-%d %H:%M:%S")
-        if isinstance(value, str):
-            value = value.strip()
-        key_values.append(value)
-    # 转成元组（不可变，可哈希）
-    return tuple(key_values)
-
-
 # -----------------------------------------------------------------------------
 
 
@@ -407,7 +388,7 @@ async def batch_import_records(file, db: AsyncSession):
 
         for record in excel_records:
             # 生成唯一标识键
-            unique_key = generate_unique_key(record)
+            unique_key = generate_unique_key(record, REPEAT_CHECK_FIELDS)
             # 检查是否已经出现过
             if unique_key in seen_keys:
                 excel_duplicate_count += 1
@@ -460,14 +441,14 @@ async def batch_import_records(file, db: AsyncSession):
         for record in existing_records:
             # 把数据库里的记录也转成唯一键，和Excel里的对比
             record_dict = {field: getattr(record, field) for field in REPEAT_CHECK_FIELDS}
-            existing_key = generate_unique_key(record_dict)
+            existing_key = generate_unique_key(record_dict, REPEAT_CHECK_FIELDS)
             existing_keys.add(existing_key)
 
         # 4.3 过滤掉数据库已存在的重复数据，只保留全新的有效数据
         final_import_records: List[dict] = []
         db_duplicate_count = 0
         for record in unique_records:
-            unique_key = generate_unique_key(record)
+            unique_key = generate_unique_key(record, REPEAT_CHECK_FIELDS)
             if unique_key in existing_keys:
                 db_duplicate_count += 1
                 continue

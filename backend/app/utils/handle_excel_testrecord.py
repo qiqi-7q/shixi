@@ -1,6 +1,53 @@
 from openpyxl import load_workbook
+from datetime import datetime, date, time
+from typing import Tuple, Dict, Any, Type
+from enum import Enum
+from io import BytesIO
+
+def handle_excel_from_bytes(data: bytes):
+    """从内存字节流读取Excel，无需落盘"""
+    try:
+        wb = load_workbook(BytesIO(data))
+        if wb.sheetnames:
+            ws = wb[wb.sheetnames[0]]
+        else:
+            raise Exception("Excel文件中没有工作表")
+    except Exception as e:
+        raise Exception(f"文件读取失败：{e}")
+    dict_list, headers = handle_data(ws)
+    return dict_list, headers
 
 
+# ---------------------- 核心工具函数：生成数据的唯一标识键 ----------------------
+def generate_unique_key(data_dict: dict, REPEAT_CHECK_FIELDS: list) -> Tuple:
+    """
+    根据配置的重复判定字段，生成数据的唯一标识元组
+    元组可哈希，可用于集合去重、数据库查询
+    """
+    key_values = []
+    for field in REPEAT_CHECK_FIELDS:
+        # 处理空值，确保None和空字符串的一致性
+        value = data_dict.get(field)
+        # 处理datetime对象，转换为统一的字符串格式
+        if isinstance(value, (datetime, date, time)):
+            value = value.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(value, str):
+            value = value.strip()
+        key_values.append(value)
+    # 转成元组（不可变，可哈希）
+    return tuple(key_values)
+
+
+# ============================================================
+# 预构建枚举值查找表（模块加载时一次性完成，避免每次请求重复遍历 __members__）
+# 将 Excel 中可能出现的值（英文名 / 中文值）统一映射到数据库存储的中文值
+# ============================================================
+def build_enum_lookup(enum_cls) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for member in enum_cls:
+        lookup[member.name.upper()] = member.value
+        lookup[member.value.upper()] = member.value
+    return lookup
 def is_empty_row(row_cells) -> bool:
     """
     判断一行是否为全空行
