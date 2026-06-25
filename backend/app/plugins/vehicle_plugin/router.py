@@ -1,3 +1,4 @@
+from datetime import date
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, UploadFile
@@ -6,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.plugins.auth_plugin.models import User
+from app.plugins.auth_plugin.router import get_current_user
 from app.plugins.vehicle_plugin import models, schemas, services
-from app.utils.data_collection import parse_url_query
 
 router = APIRouter()
 
@@ -22,7 +24,7 @@ async def get_vehicle_overview(
     vin_code: Optional[str] = Query(None, description="VIN码"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="使用状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中/已预定）"
     ),
     test_status: Optional[str] = Query(None, description="车辆状态"),
     start_date: Optional[str] = Query(
@@ -53,7 +55,7 @@ async def get_vehicle_utilization(
     vin_code: Optional[str] = Query(None, description="VIN码（模糊匹配）"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="使用状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中/已预定）"
     ),
     test_status: Optional[str] = Query(None, description="车辆状态"),
     start_date: Optional[str] = Query(None, description="开始日期 (YYYY-MM-DD)"),
@@ -84,7 +86,7 @@ async def get_status_distribution(
     vin_code: Optional[str] = Query(None, description="VIN码"),
     group: Optional[str] = Query(None, description="组别（行车组/泊车组/预警组）"),
     vehicle_status: Optional[str] = Query(
-        None, description="使用状态（可借用/已借出/维护中）"
+        None, description="使用状态（可借用/已借出/维护中/已预定）"
     ),
     test_status: Optional[str] = Query(None, description="车辆状态"),
 ):
@@ -277,14 +279,6 @@ async def vehicle_import(file: UploadFile, db: AsyncSession = Depends(get_db)):
     return result
 
 
-@router.post("/usage_rate")
-async def get_usage_rate(
-    url: str = Query(..., description="URL参数"),
-):
-    params = parse_url_query(url)
-    return {"data": params, "message": "success", "code": 200}
-
-
 borrow_router = APIRouter()
 
 
@@ -295,7 +289,7 @@ async def get_borrow_overview(
     model: Optional[str] = Query(None, description="车型"),
     vin_code: Optional[str] = Query(None, description="VIN码"),
     borrow_status: Optional[str] = Query(
-        None, description="借用状态（active/returned/cancelled）"
+        None, description="借用状态（borrowing/returned/cancelled/reserved）"
     ),
     driver_name: Optional[str] = Query(None, description="司机姓名"),
 ):
@@ -316,7 +310,7 @@ async def get_borrow_status_distribution(
     model: Optional[str] = Query(None, description="车型"),
     vin_code: Optional[str] = Query(None, description="VIN码"),
     borrow_status: Optional[str] = Query(
-        None, description="借用状态（active/returned/cancelled）"
+        None, description="借用状态（borrowing/returned/cancelled/reserved）"
     ),
     driver_name: Optional[str] = Query(None, description="司机姓名"),
 ):
@@ -416,6 +410,20 @@ async def get_borrow_records(
         conditions=conditions,
     )
     return {"data": records, "message": "success", "code": 200}
+
+
+@borrow_router.post("/borrowed")
+async def borrowed_records(
+    record_id: int,
+    vehicle_id: int,
+    db: AsyncSession = Depends(get_db),
+    # current_user: User = Depends(get_current_user)
+):
+    """获取除当前记录外的借用记录，并返回借用人和借用时间供借车时判断"""
+    existing_borrows = await services.BorrowService.borrowed_records(
+        db, record_id, vehicle_id
+    )
+    return {"data": existing_borrows, "message": "success", "code": 200}
 
 
 @borrow_router.post("/createborrow")

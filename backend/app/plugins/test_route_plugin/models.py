@@ -17,7 +17,7 @@ class TestRoute(Base):
     __tablename__ = "test_routes"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
-    location = Column(String(100), nullable=False, comment="地点")
+    location = Column(String(100), comment="地点")
     route_name = Column(String(100), nullable=False, comment="路线名称")
     route_length = Column(DECIMAL(10, 1), nullable=False, comment="路线里程")
     diff = Column(DECIMAL(3, 0), nullable=False, comment="难度系数（0-100）")

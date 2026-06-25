@@ -22,6 +22,7 @@ class VehicleStatus(str, enum.Enum):
     AVAILABLE = "可借用"
     BORROWED = "已借出"
     MAINTENANCE = "维护中"
+    RESERVED = "已预定"
 
 
 class VehicleGroup(str, enum.Enum):
@@ -89,10 +90,14 @@ class BorrowRecord(Base):
     driver_work = Column(String(50), comment="司机工作安排")
     driver_performance = Column(String(100), comment="司机绩效（有效工时+有效里程）")
     record_creator = Column(String(50), comment="记录创建人")
-    created_at = Column(Date, server_default=func.now(), comment="创建时间")
-    borrow_status = Column(String(20), default="active", comment="借用状态")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+    borrow_status = Column(
+        String(20),
+        default="active",
+        comment="借用状态（borrowing/returned/cancelled/reserved）",
+    )
     updated_at = Column(
-        Date, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
+        DateTime, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
     )
     remarks = Column(Text, comment="备注")
     # 关联车辆

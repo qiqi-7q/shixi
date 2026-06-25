@@ -8,7 +8,7 @@ from starlette.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
-from app.core.scheduler import stop_scheduler
+from app.core.scheduler import scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -18,6 +18,11 @@ async def lifespan(app: FastAPI):
     # 测试 Redis 连接
     redis_result = await redisserve.conn_ping()
     print(redis_result)
+
+    # 2. 启动定时调度器（配置中jobs已自动注册，只需start）
+    if not scheduler.running:
+        scheduler.start()
+        print("APScheduler 调度器启动成功，所有定时任务加载完成")
 
     # 注册插件
     await plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
@@ -84,6 +89,7 @@ plugin_manager.init_app(app)
 # 文件夹不存在则自动创建
 settings.STATIC_DIR.mkdir(exist_ok=True, parents=True)
 settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
+settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # ========== 挂载静态文件 ==========
 # 访问地址：http://127.0.0.1:8000/static/xxx.png
@@ -105,4 +111,5 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="10.192.183.110", port=8000, reload=True)
+    # uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

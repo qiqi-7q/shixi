@@ -24,11 +24,12 @@ async def get_tasks(
     task_publisher: str = Query(None, description="按任务发布人精准筛选"),
     test_person: str = Query(None, description="按测试人员精准筛选"),
     task_status: str = Query(None, description="按任务状态精准筛选"),
-    db: AsyncSession = Depends(get_db)
+    is_kpi: bool = Query(None, description="按是否用于 KPI 统计精准筛选"),
+    db: AsyncSession = Depends(get_db),
 ):
     result = await services.get_test_tasks(
-        db, 
-        skip=skip, 
+        db,
+        skip=skip,
         limit=limit,
         project=project,
         test_start_date=test_start_date,
@@ -36,7 +37,8 @@ async def get_tasks(
         test_function=test_function,
         task_publisher=task_publisher,
         test_person=test_person,
-        task_status=task_status
+        task_status=task_status,
+        is_kpi=is_kpi,
     )
     return {"code": 200, "data": result, "message": "任务列表获取成功"}
 
@@ -50,7 +52,9 @@ async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{task_id}")
-async def update_task(task_id: int, task: schemas.TestTaskUpdate, db: AsyncSession = Depends(get_db)):
+async def update_task(
+    task_id: int, task: schemas.TestTaskUpdate, db: AsyncSession = Depends(get_db)
+):
     result = await services.update_test_task(db, task_id=task_id, task=task)
     if result:
         return {"code": 200, "data": result, "message": "任务更新成功"}
@@ -71,10 +75,12 @@ async def get_task_stats(
     start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
     end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
     project: str = Query(None, description="按项目筛选"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """获取任务统计数据"""
-    result = await services.get_task_stats(db, start_date=start_date, end_date=end_date, project=project)
+    result = await services.get_task_stats(
+        db, start_date=start_date, end_date=end_date, project=project
+    )
     return {"code": 200, "data": result, "message": "任务统计数据获取成功"}
 
 
@@ -82,28 +88,40 @@ async def get_task_stats(
 async def get_daily_task_count(
     start_date: str = Query(None, description="统计开始日期（格式：YYYY-MM-DD）"),
     end_date: str = Query(None, description="统计结束日期（格式：YYYY-MM-DD）"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """获取每日任务下发量"""
     result = await services.get_daily_task_count(db, start_date, end_date)
-    return {"code": 200, "data": {"daily_counts": result}, "message": "每日任务下发量获取成功"}
+    return {
+        "code": 200,
+        "data": {"daily_counts": result},
+        "message": "每日任务下发量获取成功",
+    }
 
 
 @router.get("/stats/status")
 async def get_task_status_count(
     project: str = Query(None, description="按项目筛选"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """获取任务状态分布"""
     result = await services.get_task_status_count(db, project)
-    return {"code": 200, "data": {"status_counts": result}, "message": "任务状态分布获取成功"}
+    return {
+        "code": 200,
+        "data": {"status_counts": result},
+        "message": "任务状态分布获取成功",
+    }
 
 
 @router.get("/stats/function")
 async def get_function_task_count(
     project: str = Query(None, description="按项目筛选"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """获取各功能任务量"""
     result = await services.get_function_task_count(db, project)
-    return {"code": 200, "data": {"function_counts": result}, "message": "各功能任务量获取成功"}
+    return {
+        "code": 200,
+        "data": {"function_counts": result},
+        "message": "各功能任务量获取成功",
+    }

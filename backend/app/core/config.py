@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     STATIC_DIR: Path = BASE_DIR / "static"
     # 上传文件目录
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
+    # 日志目录
+    LOG_DIR: Path = BASE_DIR / "logs"
 
     # 1. 邮箱配置（核心！根据你的邮箱修改）
     # 发件人邮箱

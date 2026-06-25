@@ -4,7 +4,9 @@ except ImportError:
     # Python 3.13+ 移除了 cgitb，提供兼容层
     def text(info, context=5):
         import traceback
-        return ''.join(traceback.format_exception(*info))
+
+        return "".join(traceback.format_exception(*info))
+
 
 import enum
 
@@ -22,6 +24,7 @@ class FunctionMode(str, enum.Enum):
 
 class EvaluationDimension(str, enum.Enum):
     """评价维度枚举"""
+
     RELIABILITY = "可靠性"  # 可靠性
     REGUSAFETY = "法规/安全性"  # 法规/安全性
     COMFORT = "舒适性"  # 舒适性
@@ -30,6 +33,7 @@ class EvaluationDimension(str, enum.Enum):
 
 class KPIType(str, enum.Enum):
     """KPI项枚举"""
+
     EXIT = "异常退出"  # 异常退出
     DOWNGRADE = "异常降级"  # 异常降级
     UNACTIVATE = "无法激活"  # 无法激活
@@ -69,8 +73,8 @@ class TestRecord(Base):
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
 
     # 你要求的固定字段
-    project = Column(String(100), nullable=False, comment="项目")
-    car_type = Column(String(100), nullable=False, comment="车型")
+    project = Column(String(100), comment="项目")
+    car_type = Column(String(100), comment="车型")
     function_mode = Column(
         Enum(FunctionMode), index=True, default=FunctionMode.NAP, comment="功能模式"
     )
@@ -78,15 +82,13 @@ class TestRecord(Base):
     problem_category = Column(
         Enum(EvaluationDimension), comment="评价维度"
     )  # 可靠性、法规安全、舒适性、可用性 -->问题大类打分使用
-    kpi_type = Column(
-        Enum(KPIType), comment="KPI项"
-    )  # KPI项，打分使用
+    kpi_type = Column(Enum(KPIType), comment="KPI项")  # KPI项，打分使用
     problem_scene = Column(String(100), comment="问题场景")  # 对应一级
     problem_type = Column(String(100), comment="问题分类")
     problem_phenomenon = Column(Text, comment="问题现象")  # 对应四级
     takeover_type = Column(String(100), comment="接管类型")
-    problem_time = Column(DateTime, nullable=False, comment="问题时间")
-    vin_code = Column(String(17), index=True, nullable=False, comment="车辆VIN号")
+    problem_time = Column(DateTime, comment="问题时间")
+    vin_code = Column(String(17), index=True, comment="车辆VIN号")
     data_link = Column(String(500), comment="数据链接")
     wetrack_link = Column(String(500), comment="Wetrack链接")
     analyze_result = Column(Text, comment="分析结果")

@@ -13,9 +13,6 @@ class TestRouteService:
     async def create_test_route(
         db: AsyncSession, route: schemas.TestRouteCreate
     ) -> str:
-        # 校验地点
-        if not route.location:
-            return "地点不能为空"
         if not route.route_name:
             return "路线名称不能为空"
         if not route.route_length:
@@ -45,11 +42,10 @@ class TestRouteService:
         test_func: Optional[str] = None,
         diff: Optional[int] = None,
         location: Optional[str] = None,
-        order_by_length: Optional[str] = None
+        order_by_length: Optional[str] = None,
     ) -> dict:
         stmt = select(models.TestRoute)
 
-        
         # 筛选条件
         if location:
             stmt = stmt.filter(models.TestRoute.location.contains(location))
@@ -57,13 +53,14 @@ class TestRouteService:
             stmt = stmt.filter(models.TestRoute.test_func.contains(test_func))
         if diff is not None:
             stmt = stmt.filter(models.TestRoute.diff == diff)
-        
+
         # 统计总数
         from sqlalchemy import func
+
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total_result = await db.execute(count_stmt)
         total = total_result.scalar_one()
-        
+
         # 排序
         if order_by_length == "asc":
             stmt = stmt.order_by(models.TestRoute.route_length.asc())
@@ -71,18 +68,13 @@ class TestRouteService:
             stmt = stmt.order_by(models.TestRoute.route_length.desc())
         else:
             stmt = stmt.order_by(models.TestRoute.id.desc())
-        
+
         # 分页查询
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         items = list(result.scalars().all())
-        
-        return {
-            "items": items,
-            "total": total,
-            "skip": skip,
-            "limit": limit
-        }
+
+        return {"items": items, "total": total, "skip": skip, "limit": limit}
 
     # 获取单条
     @staticmethod

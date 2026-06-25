@@ -1,10 +1,10 @@
 from io import BytesIO
 from typing import Dict, List, Optional, Set, Tuple
-from datetime import datetime
+from datetime import datetime, date
 
 from fastapi import UploadFile
 from openpyxl import load_workbook
-from sqlalchemy import and_, delete, or_, select
+from sqlalchemy import and_, delete, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.vehicle_plugin import models, schemas
@@ -172,6 +172,8 @@ class VehicleService:
             return "车主权限不能为空"
         if not vehicles.plate_number:
             return "车牌号不能为空"
+        if vehicles.vehicle_status != models.VehicleStatus.AVAILABLE:
+            return "新增车辆时车辆状态必须为可借用"
         vecodeExisting = await db.execute(
             select(models.Vehicle).where(
                 models.Vehicle.vehicle_code == vehicles.vehicle_code
@@ -449,13 +451,6 @@ class VehicleService:
 
 class BorrowService:
 
-    # @staticmethod
-    # def _build_condition(field_name: str, operator: str, value: Any):
-    #     # 构建查询条件
-    #     field = getattr(models.BorrowRecord, field_name)
-    #     op_func = settings.ADVANCED_OPERATORS.get(operator, settings.ADVANCED_OPERATORS["eq"])
-    #     return op_func(field, value)
-
     @staticmethod
     async def get_borrow_records_simple(
         db: AsyncSession,
@@ -481,7 +476,8 @@ class BorrowService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
+        # 借用记录倒序排序
+        stmt = stmt.order_by(models.BorrowRecord.borrow_time.desc())
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         return {
@@ -520,7 +516,7 @@ class BorrowService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        stmt = stmt.order_by(models.BorrowRecord.created_at.desc())
+        stmt = stmt.order_by(models.BorrowRecord.borrow_time.desc())
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         return {
@@ -538,43 +534,83 @@ class BorrowService:
 
         if not record:
             return "借用记录不存在"
+
         return record
 
-    # 获取车辆的所有活动借用记录
     @staticmethod
-    async def get_active_borrows_by_vehicle(
-        db: AsyncSession, vehicle_id: int
-    ) -> List[models.BorrowRecord]:
-        stmt = select(models.BorrowRecord).where(
-            and_(
+    async def borrowed_records(
+        db: AsyncSession,
+        record_id: int,
+        vehicle_id: int,
+    ) -> list[dict]:
+        current_date = date.today()
+        # 查询BorrowRecord数据库中，vehicle_id=borrow.vehicle_id,借用状态是borrowing或reserved，但除了当前记录外的借用记录，
+        existing_borrows = await db.execute(
+            select(models.BorrowRecord)
+            .where(
                 models.BorrowRecord.vehicle_id == vehicle_id,
-                models.BorrowRecord.borrow_status == "active",
+                models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                models.BorrowRecord.borrow_time >= current_date,
+                models.BorrowRecord.id != record_id,
             )
+            .order_by(models.BorrowRecord.borrow_time.desc())
         )
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
+        # 提取记录的borrower、borrow_time返回列表
+        existing_borrows = [
+            {"borrower": record.borrower, "borrow_time": record.borrow_time}
+            for record in existing_borrows.scalars().all()
+        ]
+        if not existing_borrows:
+            return []
+        return existing_borrows
 
     @staticmethod
     async def create_borrow_record(
         db: AsyncSession, borrow: schemas.BorrowRecordCreate
-    ) -> bool | str:
+    ) -> str:
         if not borrow.borrower:
             return "借用人不能为空"
         if not borrow.borrow_time:
             return "借用时间不能为空"
+        # 获取当前日期（只要年月日）
+        current_time = date.today()
+        if borrow.borrow_time < current_time:
+            return "借用时间必须是今天及之后的日期"
+
         # 检查车辆是否存在
         vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
         if not vehicle:
             return "车辆信息不存在"
+        if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
+            return "车辆正在维护，无法借用"
+        # 事务
+        try:
+            # 更新车辆状态
+            if borrow.borrow_time == current_time:
+                borrow.borrow_status = "borrowing"
+                if vehicle.vehicle_status != models.VehicleStatus.AVAILABLE:
+                    # 不修改车辆状态
+                    pass
+                else:
+                    vehicle.vehicle_status = models.VehicleStatus.BORROWED
 
-        # 创建借用记录
-        db_borrow = models.BorrowRecord(**borrow.model_dump())
+            if borrow.borrow_time > current_time:
+                # 修改借用状态为 reserved
+                borrow.borrow_status = "reserved"
+                if vehicle.vehicle_status != models.VehicleStatus.RESERVED:
+                    vehicle.vehicle_status = models.VehicleStatus.RESERVED
+                else:
+                    pass
 
-        # 更新车辆状态
-        vehicle.vehicle_status = models.VehicleStatus.BORROWED
+            # 创建借用记录
+            db_borrow = models.BorrowRecord(**borrow.model_dump())
 
-        db.add(db_borrow)
-        await db.commit()
+            db.add(db_borrow)
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            return f"创建借用记录失败：{e}"
+
         await db.refresh(db_borrow)
         return "success"
 
@@ -584,7 +620,12 @@ class BorrowService:
     ) -> bool | str:
         record = await BorrowService.get_borrow_record(db, record_id)
         if not record:
-            return ""
+            return "借用记录不存在"
+        current_time = date.today()
+        if record.borrow_time < current_time:
+            return "借用已完成，无法修改"
+        if borrow_update.borrow_time < current_time:
+            return "借用时间必须是今天及之后的日期"
         update_data = borrow_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(record, field, value)
@@ -607,17 +648,53 @@ class BorrowService:
         record = await BorrowService.get_borrow_record(db, record_id)
         if not record:
             return "借用记录不存在"
-        if record.borrow_status != "active":
-            return "借用记录不是可归还的状态"
+        if record.borrow_status == "returned":
+            return "借用车辆已归还，无需重复操作"
+        if record.borrow_status == "cancelled":
+            return "车辆借用已取消，无需归还"
+        # 事务
+        try:
+            # 更新借用记录
+            record.borrow_status = "returned"
 
-        # 更新借用记录
-        record.borrow_status = "returned"
+            # 更新车辆状态
+            vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
+            current_date = date.today()
 
-        # 更新车辆状态
-        vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
-        vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
+            # 第一步：判断是否有今日借用
+            stmt_today = select(
+                exists().where(
+                    models.BorrowRecord.vehicle_id == vehicle.id,
+                    models.BorrowRecord.borrow_time == current_date,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                    models.BorrowRecord.id != record_id,
+                )
+            )
+            has_today_borrow = await db.scalar(stmt_today)
+            if has_today_borrow:
+                vehicle.vehicle_status = models.VehicleStatus.BORROWED
 
-        await db.commit()
+            # 第二步：无今日借用，再判断是否有未来预约
+            stmt_future = select(
+                exists().where(
+                    models.BorrowRecord.vehicle_id == vehicle.id,
+                    models.BorrowRecord.borrow_time > current_date,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                    models.BorrowRecord.id != record_id,
+                )
+            )
+            has_future_reserve = await db.scalar(stmt_future)
+            if has_future_reserve:
+                vehicle.vehicle_status = models.VehicleStatus.RESERVED
+
+            # 无任何借用/预约或借用时间在当前日期之前
+            if not has_today_borrow and not has_future_reserve:
+                vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
+
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            return f"归还车辆失败：{e}"
         await db.refresh(record)
         return "success"
 
@@ -627,17 +704,54 @@ class BorrowService:
 
         if not record:
             return "借用记录不存在"
-        if record.borrow_status != "active":
-            return "借用记录不是可取消的状态"
+        if record.borrow_status == "returned":
+            return "借用车辆已归还，无需取消"
+        if record.borrow_status == "cancelled":
+            return "车辆借用已取消，无需重复操作"
 
-        # 更新借用记录
-        record.borrow_status = "cancelled"
+        # 事务
+        try:
+            # 更新借用记录
+            record.borrow_status = "cancelled"
 
-        # 更新车辆状态
-        vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
-        vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
+            # 更新车辆状态
+            vehicle = await VehicleService.get_vehicle(db, record.vehicle_id)
+            current_date = date.today()
 
-        await db.commit()
+            # 第一步：判断是否有今日借用
+            stmt_today = select(
+                exists().where(
+                    models.BorrowRecord.vehicle_id == vehicle.id,
+                    models.BorrowRecord.borrow_time == current_date,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                    models.BorrowRecord.id != record_id,
+                )
+            )
+            has_today_borrow = await db.scalar(stmt_today)
+            if has_today_borrow:
+                vehicle.vehicle_status = models.VehicleStatus.BORROWED
+
+            # 第二步：无今日借用，再判断是否有未来预约
+            stmt_future = select(
+                exists().where(
+                    models.BorrowRecord.vehicle_id == vehicle.id,
+                    models.BorrowRecord.borrow_time > current_date,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                    models.BorrowRecord.id != record_id,
+                )
+            )
+            has_future_reserve = await db.scalar(stmt_future)
+            if has_future_reserve:
+                vehicle.vehicle_status = models.VehicleStatus.RESERVED
+
+            # 无任何借用/预约或借用时间在当前日期之前
+            if not has_today_borrow and not has_future_reserve:
+                vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
+
+            await db.commit()
+        except Exception as e:
+            await db.rollback()
+            return f"取消车辆借用失败：{e}"
         await db.refresh(record)
         return "success"
 
@@ -716,11 +830,20 @@ class VehicleStatsService:
             maintenance_stmt = maintenance_stmt.where(*filters)
         maintenance = await db.scalar(maintenance_stmt) or 0
 
+        # 已预定车辆数
+        reserved_stmt = select(func.count(models.Vehicle.id)).where(
+            models.Vehicle.vehicle_status == models.VehicleStatus.RESERVED
+        )
+        if filters:
+            reserved_stmt = reserved_stmt.where(*filters)
+        reserved = await db.scalar(reserved_stmt) or 0
+
         return {
             "total": total,
             "available": available,
             "borrowed": borrowed,
             "maintenance": maintenance,
+            "reserved": reserved,
         }
 
     @staticmethod
@@ -897,7 +1020,7 @@ class VehicleStatsService:
         stmt = stmt.group_by(models.Vehicle.vehicle_status)
 
         result = await db.execute(stmt)
-        all_statuses = ["可借用", "已借出", "维护中"]
+        all_statuses = ["可借用", "已借出", "维护中", "已预定"]
         status_counts = {row.status.value: row.count for row in result.all()}
 
         return [
@@ -961,11 +1084,20 @@ class BorrowStatsService:
             cancelled_stmt = cancelled_stmt.where(*filters)
         cancelled = await db.scalar(cancelled_stmt) or 0
 
+        # 已预定数量
+        reserved_stmt = select(func.count(models.BorrowRecord.id)).where(
+            models.BorrowRecord.borrow_status == "reserved"
+        )
+        if filters:
+            reserved_stmt = reserved_stmt.where(*filters)
+        reserved = await db.scalar(reserved_stmt) or 0
+
         return {
             "total": total,
             "active": active,
             "returned": returned,
             "cancelled": cancelled,
+            "reserved": reserved,
         }
 
     @staticmethod
@@ -1003,4 +1135,5 @@ class BorrowStatsService:
             {"status": "借用中", "count": status_counts.get("active", 0)},
             {"status": "已归还", "count": status_counts.get("returned", 0)},
             {"status": "已取消", "count": status_counts.get("cancelled", 0)},
+            {"status": "已预定", "count": status_counts.get("reserved", 0)},
         ]
