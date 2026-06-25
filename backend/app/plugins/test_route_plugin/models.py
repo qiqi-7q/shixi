@@ -1,4 +1,5 @@
-from sqlalchemy import Column, DECIMAL, DateTime, Integer, String, Text
+import enum
+from sqlalchemy import Column, DECIMAL, DateTime, Integer, String, Text, Enum
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -11,19 +12,25 @@ from app.core.database import Base
 #     Column("test_route_id", Integer, ForeignKey("test_routes.id"), nullable=False, comment="测试路线ID"),
 #     Column("route_feature_id", Integer, ForeignKey("route_features.id"), nullable=False, comment="路线特征ID"),
 # )
+class RouteFeature(str, enum.Enum):
+    """路线特征"""
 
+    A = "可靠性"  # 可靠性
+    B = "法规/安全性"  # 法规/安全性
+    C = "舒适性"  # 舒适性
+    D = "可用性"  # 可用性
 
 class TestRoute(Base):
     __tablename__ = "test_routes"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
-    location = Column(String(100), comment="地点")
+    location = Column(String(100), comment="城市")
     route_name = Column(String(100), nullable=False, comment="路线名称")
     route_length = Column(DECIMAL(10, 1), nullable=False, comment="路线里程")
     diff = Column(DECIMAL(3, 0), nullable=False, comment="难度系数（0-100）")
     test_func = Column(String(100), nullable=False, comment="测试功能")
     route_desc = Column(Text, comment="路线描述")
-    route_feature = Column(String(200), comment="路线特征")
+    route_feature = Column(Enum(RouteFeature), comment="路线特征")
     route_link = Column(String(500), comment="路线链接")
     remark = Column(Text, comment="备注")
 

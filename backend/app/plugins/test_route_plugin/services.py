@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_route_plugin import models, schemas
-
+from app.plugins.test_route_plugin.models import RouteFeature
 
 class TestRouteService:
 
