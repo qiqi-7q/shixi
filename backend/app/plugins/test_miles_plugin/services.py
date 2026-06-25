@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from fastapi import HTTPException
 from app.plugins.test_miles_plugin import models, schemas
 from datetime import datetime
@@ -84,7 +84,6 @@ async def delete_test_miles(db: AsyncSession, miles_id: int):
 
 
 # ==================== 统计相关函数 ====================
-from sqlalchemy import func
 
 
 async def get_version_mileage(db: AsyncSession, project: str = None, test_version: str = None, test_function: str = None, start_date: str = None, end_date: str = None):

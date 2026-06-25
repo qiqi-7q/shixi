@@ -171,6 +171,94 @@ CHINESE_FIELD_MAPPING = {
 # -----------------------------------------------------------------------------
 
 
+def clean_string(value) -> str:
+    """
+    清理字符串中的特殊字符
+    - 移除不可见字符（换行符、制表符等）
+    - 移除首尾空白
+    - 处理全角/半角字符
+    """
+    if value is None:
+        return None
+    
+    if not isinstance(value, str):
+        value = str(value)
+    
+    # 移除不可见字符（保留基本的空白字符）
+    import re
+    # 移除控制字符（除了换行和制表符）
+    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', value)
+    # 移除首尾空白和不可见字符
+    cleaned = cleaned.strip()
+    # 移除首尾的特殊符号（如全角空格等）
+    cleaned = re.sub(r'^[\s\u3000]+|[\s\u3000]+$', '', cleaned)
+    
+    return cleaned
+
+
+def convert_chinese_date(date_value) -> str:
+    """
+    将各种日期格式转换为标准格式
+    支持：
+    - 中文日期：2026年6月22日 → 2026-06-22 00:00:00
+    - datetime对象：直接格式化
+    - Excel日期序列号：转换为日期
+    - 标准字符串：保持原样
+    """
+    import re
+    from datetime import datetime, date, timedelta
+    
+    # 如果是None，返回None
+    if date_value is None:
+        return None
+    
+    # 如果是datetime/date对象，直接格式化
+    if isinstance(date_value, (datetime, date)):
+        return date_value.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 如果是数字（Excel日期序列号），转换为datetime
+    if isinstance(date_value, (int, float)):
+        try:
+            # Excel日期序列号转换（1900年基准）
+            dt = datetime(1899, 12, 30) + timedelta(days=date_value)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            pass
+    
+    # 如果是字符串，处理各种格式
+    date_str = str(date_value).strip()
+    
+    # 清理特殊字符
+    date_str = clean_string(date_str)
+    
+    # 尝试匹配中文日期
+    match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', date_str)
+    if match:
+        year = match.group(1)
+        month = match.group(2).zfill(2)
+        day = match.group(3).zfill(2)
+        return f"{year}-{month}-{day} 00:00:00"
+    
+    # 尝试匹配标准日期格式
+    standard_formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d"
+    ]
+    for fmt in standard_formats:
+        try:
+            dt = datetime.strptime(date_str, fmt)
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+    
+    # 无法识别的格式，返回原值（由后续Pydantic验证处理）
+    return date_str
+
+
 def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
     """
     将中文表头转换为英文字段名
@@ -183,10 +271,30 @@ def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
         for cn_header, en_field in CHINESE_FIELD_MAPPING.items():
             # 优先查找中文表头
             if cn_header in record:
-                transformed[en_field] = record[cn_header]
+                value = record[cn_header]
+                # 清理字符串字段中的特殊字符（用于去重匹配）
+                if isinstance(value, str):
+                    value = clean_string(value)
+                # 特殊处理：software_version 字段确保为字符串类型
+                if en_field == 'software_version' and value is not None:
+                    value = str(value)
+                # 特殊处理：problem_time 字段，转换各种日期格式
+                if en_field == 'problem_time' and value is not None:
+                    value = convert_chinese_date(value)
+                transformed[en_field] = value
             # 其次查找英文表头（保持向后兼容）
             elif en_field in record:
-                transformed[en_field] = record[en_field]
+                value = record[en_field]
+                # 清理字符串字段中的特殊字符（用于去重匹配）
+                if isinstance(value, str):
+                    value = clean_string(value)
+                # 特殊处理：software_version 字段确保为字符串类型
+                if en_field == 'software_version' and value is not None:
+                    value = str(value)
+                # 特殊处理：problem_time 字段，转换各种日期格式
+                if en_field == 'problem_time' and value is not None:
+                    value = convert_chinese_date(value)
+                transformed[en_field] = value
         # 保留原始行号信息
         if '_original_row_num' in record:
             transformed['_original_row_num'] = record['_original_row_num']

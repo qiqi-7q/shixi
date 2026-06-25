@@ -104,7 +104,6 @@ async def batch_export(
     function_mode: Optional[FunctionMode] = Query(None, description="功能模式筛选"),
     problem_category: Optional[EvaluationDimension] = Query(None, description="评价维度筛选"),
     kpi_type: Optional[KPIType] = Query(None, description="KPI类型筛选"),
-    record_ids: Optional[str] = Query(None, description="指定记录ID列表，用逗号分隔，如: 1,2,3"),
 ):
     """
     批量导出测试记录到Excel文件
@@ -113,17 +112,8 @@ async def batch_export(
     :param function_mode: 功能模式筛选条件
     :param problem_category: 评价维度筛选条件
     :param kpi_type: KPI类型筛选条件
-    :param record_ids: 指定记录ID列表（优先使用），逗号分隔
     :return: Excel文件流
     """
-    # 解析record_ids参数
-    id_list = None
-    if record_ids:
-        try:
-            id_list = [int(id.strip()) for id in record_ids.split(",") if id.strip()]
-        except ValueError:
-            raise HTTPException(status_code=400, detail="record_ids参数格式错误，应为逗号分隔的数字列表")
-    
     # 查询数据
     export_data = await services.batch_export_records(
         db,
@@ -132,7 +122,6 @@ async def batch_export(
         function_mode=function_mode,
         problem_category=problem_category,
         kpi_type=kpi_type,
-        record_ids=id_list,
     )
 
     if not export_data:

@@ -124,3 +124,21 @@ class KpiItemResponse(KpiItemBase):
     update_time: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ========== 手动更新成功率请求模型 ==========
+class UpdateSuccessRateRequest(BaseModel):
+    """手动更新成功率指标请求模型"""
+    
+    project: str = Field(..., description="项目")
+    carModel: str = Field(..., description="车型")
+    version: str = Field(..., description="版本")
+    funcMode: str = Field(..., description="功能模式")
+    
+    # 成功率指标（0-100，表示百分比）
+    change_lane_success_rate: float = Field(..., ge=0, le=100, description="变道成功率(%)")
+    inflow_success_rate: float = Field(..., ge=0, le=100, description="汇入成功率(%)")
+    outflow_success_rate: float = Field(..., ge=0, le=100, description="汇出成功率(%)")
+    diverge_converge_rate: float = Field(..., ge=0, le=100, description="分合流成功率(%)")
+    special_rate: float = Field(..., ge=0, le=100, description="特殊场景成功率(%)")
+    recog_rate: float = Field(..., ge=0, le=100, description="限速识别成功率(%)")
