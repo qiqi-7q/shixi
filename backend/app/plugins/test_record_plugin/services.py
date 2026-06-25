@@ -6,9 +6,18 @@ from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_record_plugin import models, schemas
-from app.plugins.test_record_plugin.models import FunctionMode, EvaluationDimension, KPIType
+from app.plugins.test_record_plugin.models import (
+    FunctionMode,
+    EvaluationDimension,
+    KPIType,
+)
 from app.plugins.test_record_plugin.client import APIClient
-from app.utils.handle_excel_testrecord import handle_excel_some
+from app.utils.handle_excel_testrecord import (
+    build_enum_lookup,
+    generate_unique_key,
+    handle_excel_from_bytes,
+)
+from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
 
 
@@ -31,6 +40,46 @@ async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate)
     return "success"
 
 
+async def get_test_records_adv(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    conditions: Optional[List[dict]] = None,
+) -> dict:
+    stmt = select(models.TestRecord)
+    if conditions:
+        get_condition = []
+
+        for cond in conditions:
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
+            value = cond.get("advanced_value") or cond.get("value")
+
+            condition = build_condition(models.TestRecord, field_name, operator, value)
+            if condition is not None:
+                get_condition.append(condition)
+
+        stmt = stmt.where(and_(*get_condition))
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
+    result = await db.execute(stmt)
+    return {
+        "items": list(result.scalars().all()),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
+
+
+
 # 获取列表
 async def get_test_records(
     db: AsyncSession,
@@ -41,6 +90,7 @@ async def get_test_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
+    software_version: Optional[str] = None
 ):
     stmt = select(models.TestRecord)
     if project:
@@ -53,6 +103,8 @@ async def get_test_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
+    if software_version:
+        stmt = stmt.filter(models.TestRecord.software_version == software_version)
 
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
@@ -64,7 +116,7 @@ async def get_test_records(
         "items": result.scalars().all(),
         "total": total,
         "skip": skip,
-        "limit": limit
+        "limit": limit,
     }
 
 
@@ -104,48 +156,10 @@ async def delete_test_record(db: AsyncSession, record_id: int):
     return "success"
 
 
-# 批量导入
-# # def batch_import_records(db: Session, records: List[schemas.TestRecordCreate]):
-# def batch_import_records(file_path: str,db: Session):
-#     # records,headers = excel_to_dict_list(file_path)
-#     # 1. 处理Excel文件，捕获异常
-#     try:
-#         records, headers = excel_to_dict_list(file_path)
-#
-#     except Exception as e:
-#         # 其他未知异常
-#         raise HTTPException(status_code=500, detail=f"数据处理失败：{str(e)}")
-#     if not records:
-#         raise HTTPException(status_code=400, detail="导入数据不能为空")
-#
-#     success_count = 0
-#     for item_dict in records:
-#         try:
-#             # 第一步：先把字典转成Pydantic模型，做数据格式/类型校验
-#             pydantic_record = schemas.TestRecordCreate(**item_dict)
-#             # 第二步：把校验通过的Pydantic模型，转成标准字典（这里才能用.dict()）
-#             record_dict = pydantic_record.dict()
-#             # 第三步：把字典解包，生成SQLAlchemy数据库模型实例
-#             db_record = models.TestRecord(**record_dict)
-#             db.add(db_record)
-#             success_count += 1
-#         except Exception as e:
-#             db.rollback()
-#             print(f"<UNK>{str(e)}")
-#             raise HTTPException(status_code=400, detail=f"导入失败：{str(e)}")
-#
-#     db.commit()
-#     return {
-#         "msg": "批量导入完成",
-#         "total": len(records),
-#         "success": success_count
-#     }
-
 # ---------------------- 可自定义配置：重复数据判定字段 ----------------------
 # 在这里修改：哪些字段组合起来，判定为重复数据
 REPEAT_CHECK_FIELDS = ["vin_code", "problem_time", "problem_desc"]
 # -----------------------------------------------------------------------------
-
 # ---------------------- 中文表头到英文字段名的映射 ----------------------
 CHINESE_FIELD_MAPPING = {
     "项目": "project",
@@ -166,7 +180,7 @@ CHINESE_FIELD_MAPPING = {
     "分析人员": "analyze_user",
     "分析附件": "analyze_attach",
     "软件版本": "software_version",
-    "备注": "remarks"
+    "备注": "remarks",
 }
 # -----------------------------------------------------------------------------
 
@@ -180,10 +194,10 @@ def clean_string(value) -> str:
     """
     if value is None:
         return None
-    
+
     if not isinstance(value, str):
         value = str(value)
-    
+
     # 移除不可见字符（保留基本的空白字符）
     import re
     # 移除控制字符（除了换行和制表符）
@@ -192,7 +206,7 @@ def clean_string(value) -> str:
     cleaned = cleaned.strip()
     # 移除首尾的特殊符号（如全角空格等）
     cleaned = re.sub(r'^[\s\u3000]+|[\s\u3000]+$', '', cleaned)
-    
+
     return cleaned
 
 
@@ -207,15 +221,15 @@ def convert_chinese_date(date_value) -> str:
     """
     import re
     from datetime import datetime, date, timedelta
-    
+
     # 如果是None，返回None
     if date_value is None:
         return None
-    
+
     # 如果是datetime/date对象，直接格式化
     if isinstance(date_value, (datetime, date)):
         return date_value.strftime("%Y-%m-%d %H:%M:%S")
-    
+
     # 如果是数字（Excel日期序列号），转换为datetime
     if isinstance(date_value, (int, float)):
         try:
@@ -224,13 +238,13 @@ def convert_chinese_date(date_value) -> str:
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except:
             pass
-    
+
     # 如果是字符串，处理各种格式
     date_str = str(date_value).strip()
-    
+
     # 清理特殊字符
     date_str = clean_string(date_str)
-    
+
     # 尝试匹配中文日期
     match = re.match(r'(\d{4})年(\d{1,2})月(\d{1,2})日', date_str)
     if match:
@@ -238,7 +252,7 @@ def convert_chinese_date(date_value) -> str:
         month = match.group(2).zfill(2)
         day = match.group(3).zfill(2)
         return f"{year}-{month}-{day} 00:00:00"
-    
+
     # 尝试匹配标准日期格式
     standard_formats = [
         "%Y-%m-%d %H:%M:%S",
@@ -254,7 +268,7 @@ def convert_chinese_date(date_value) -> str:
             return dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             continue
-    
+
     # 无法识别的格式，返回原值（由后续Pydantic验证处理）
     return date_str
 
@@ -548,21 +562,23 @@ def get_bag_list(set_id, size):
     api_client = APIClient(base_url, token=None, debug=True)
     response = api_client.list_bags(set_id, start=0, size=size)
 
-    if 'error' in response:
+    if "error" in response:
         raise ValueError(f"API错误: {response['error']['message']}")
 
-    result = response['result']['infos']
+    result = response["result"]["infos"]
     grouped_data = {}
     for item in result:
-        vin = item['vin']
+        vin = item["vin"]
         if vin not in grouped_data:
             grouped_data[vin] = []
-        grouped_data[vin].append({
-            'bagId': item['bagId'],
-            'setId': item['setId'],
-            'startTime': item['startTime'],
-            'endTime': item['endTime']
-        })
+        grouped_data[vin].append(
+            {
+                "bagId": item["bagId"],
+                "setId": item["setId"],
+                "startTime": item["startTime"],
+                "endTime": item["endTime"],
+            }
+        )
     return grouped_data
 
 
@@ -573,7 +589,9 @@ def find_bag_url(target_vin, target_time, grouped_data, set_id):
 
     if target_vin in grouped_data:
         for record in grouped_data[target_vin]:
-            mid_seconds = record['startTime'] + (record['endTime'] - record['startTime']) / 2
+            mid_seconds = (
+                record["startTime"] + (record["endTime"] - record["startTime"]) / 2
+            )
             mid_seconds = mid_seconds / 1000000
             time_error = abs(target_timestamp - mid_seconds)
 
@@ -584,13 +602,13 @@ def find_bag_url(target_vin, target_time, grouped_data, set_id):
                 url = f"https://leapai.leapmotor.com/#/dataSet?setId={record['setId']}&bagId={record['bagId']}"
                 bag_url.append(url)
 
-    return ', '.join(bag_url) if bag_url else None
+    return ", ".join(bag_url) if bag_url else None
 
 
 async def refresh_link(db: AsyncSession):
     stmt = select(models.TestRecord).filter(
         models.TestRecord.vin_code.isnot(None),
-        models.TestRecord.problem_time.isnot(None)
+        models.TestRecord.problem_time.isnot(None),
     )
     result = await db.execute(stmt)
     records = result.scalars().all()
@@ -628,18 +646,12 @@ async def refresh_link(db: AsyncSession):
             try:
                 # 第一步：原有逻辑，先匹配1963数据集链接
                 link_1963 = find_bag_url(
-                    db_record.vin_code,
-                    db_record.problem_time,
-                    group_1963,
-                    set_id_1963
+                    db_record.vin_code, db_record.problem_time, group_1963, set_id_1963
                 )
 
                 # 第二步：匹配6868888数据集链接
                 link_6868 = find_bag_url(
-                    db_record.vin_code,
-                    db_record.problem_time,
-                    group_6868,
-                    set_id_6868
+                    db_record.vin_code, db_record.problem_time, group_6868, set_id_6868
                 )
 
                 # 拼接两个链接，逗号分隔
@@ -669,12 +681,13 @@ async def refresh_link(db: AsyncSession):
             "total_records": len(records),
             "success_count": success_count,
             "fail_count": fail_count,
-            "no_match_count": no_match_count
+            "no_match_count": no_match_count,
         }
 
     except Exception as e:
         await db.rollback()
         return f"刷新数据链接失败: {str(e)}"
+
 
 # 批量导出测试记录
 async def batch_export_records(
@@ -699,7 +712,11 @@ async def batch_export_records(
     """
     # 构建查询
     stmt = select(models.TestRecord)
-    
+
+    # 如果提供了record_ids，在筛选结果中进一步按ID列表过滤
+    if record_ids:
+        stmt = stmt.filter(models.TestRecord.id.in_(record_ids))
+
     # 先应用筛选条件（始终生效）
     if project:
         stmt = stmt.filter(models.TestRecord.project.contains(project))
@@ -711,10 +728,6 @@ async def batch_export_records(
         stmt = stmt.filter(models.TestRecord.problem_category == problem_category)
     if kpi_type:
         stmt = stmt.filter(models.TestRecord.kpi_type == kpi_type)
-    
-    # 如果提供了record_ids，在筛选结果中进一步按ID列表过滤
-    if record_ids and len(record_ids) > 0:
-        stmt = stmt.filter(models.TestRecord.id.in_(record_ids))
 
     # 执行查询
     result = await db.execute(stmt)
@@ -754,7 +767,7 @@ async def batch_export_records(
         "软件版本": "software_version",
         "备注": "remarks",
         "创建时间": "created_at",
-        "更新时间": "updated_at"
+        "更新时间": "updated_at",
     }
 
     # 转换记录为字典列表（将枚举值转换为中文值）

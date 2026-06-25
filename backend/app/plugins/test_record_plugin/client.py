@@ -443,7 +443,8 @@ class APIClient:
             return {"error": {"code": -1, "message": f"Request failed: {e}"}}
 
     def get_token_from_file(self):
-        file_path = r'D:\project\lpATMP\backend\app\plugins\test_record_plugin\token.json'
+        current_dir = os.path.dirname(__file__)
+        file_path = os.path.join(current_dir, "token.json")
         if not file_path:
             raise ValueError("no $TrainParamsJson")
         try:
@@ -454,7 +455,8 @@ class APIClient:
             raise ValueError(f"Failed to load token from file: {e}")
 
     def update_token_in_file(self, new_token):
-        file_path = r'D:\project\lpATMP\backend\app\plugins\test_record_plugin\token.json'
+        current_dir = os.path.dirname(__file__)
+        file_path = os.path.join(current_dir, "token.json")
         if not file_path:
             raise ValueError("no $TrainParamsJson")
         try:

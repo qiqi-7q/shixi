@@ -16,6 +16,10 @@ router = APIRouter()
 task_filter = ["电子内部发测", "整车发测"]
 cell_filter = ["SOP", "OTA"]
 
+# 允许上传的文件格式
+ALLOWED_EXT = {".xlsx", ".xls"}
+SET_DIR = "project_plan"
+
 
 @router.post("/create_plan")
 async def create_plan(
@@ -30,7 +34,7 @@ async def create_plan(
     if plan_data:
         return {"message": "数据已存在", "code": 200, "data": json.loads(plan_data)}
     data = await plan_serve.async_parse_program_plan(
-        file_path, task_filter=task_filter, cell_filter=cell_filter
+        file_path, task_filter=task_filter, cell_filter=cell_filter, SET_DIR=SET_DIR
     )
     if isinstance(data, str):
         return {"message": data, "code": 400, "data": None}
@@ -48,10 +52,8 @@ async def upload_planfile(
     totalSize: Optional[int] = Form(...),
 ) -> Dict[str, Any] | str:
     """上传项目计划文件"""
-    # 允许的文件格式
-    ALLOWED_EXT = {".xlsx", ".xls"}
-    SET_DIR = "project_plan"
 
-    return await upload_file(
+    result = await upload_file(
         file, fileMd5, chunkIndex, totalChunk, totalSize, ALLOWED_EXT, SET_DIR
     )
+    return result

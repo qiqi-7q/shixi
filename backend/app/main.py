@@ -10,6 +10,7 @@ from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
 from app.core.scheduler import stop_scheduler
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
@@ -43,7 +44,9 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "data_analysis", "app.plugins.data_analysis_plugin.plugin"
     )
-
+    await plugin_manager.register_plugin(
+        "project_plan", "app.plugins.project_plan_plugin.plugin"
+    )
     yield
     # 关闭时执行
     stop_scheduler()
@@ -99,3 +102,7 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
+
+
+if __name__ == "__main__":
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

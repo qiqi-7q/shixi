@@ -1,4 +1,5 @@
 import os
+import re
 
 from openpyxl import load_workbook
 from typing import Optional, List, Dict, Any, Tuple
@@ -28,22 +29,26 @@ class ProjectPlanService:
         return f"{dt.year}.{dt.month}.W{week_num}"
 
     @staticmethod
-    def week_str_to_comparable(week_str: str) -> Tuple[int, int, int]:
+    def week_str_to_date_tuple(week_str: str) -> Tuple[int, int, int]:
         """
-        将 "2026.6.W3" 转换为可比较的元组 (2026, 6, 3)
+        将 "2026.1.W4: 1/28" 转换为可比较的日期元组 (2026, 1, 28)
+        提取年份和月/日，用于按实际日期排序
         """
-        year_part, month_part, week_part = week_str.split(".")
-        year = int(year_part)
-        month = int(month_part)
-        week_num = int(week_part.replace("W", ""))
-        return (year, month, week_num)
+        # 提取年份：冒号前 ".W" 之前的部分，如 "2026.1.W4: 1/28" → "2026.1"
+        week_part = week_str.split(":")[0].strip()
+        year = int(week_part.split(".")[0])
+        # 提取月/日：冒号后的部分，如 "1/28" → (1, 28)
+        date_str = week_str.split(":")[1].strip() if ":" in week_str else ""
+        if date_str:
+            month, day = date_str.split("/")
+            return (year, int(month), int(day))
 
     @staticmethod
     def sort_data_by_week(data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        按整车发测的SOP阀点周期排序
+        按整车发测的实际日期排序（越早越靠前）
         排序规则：
-        1. 有整车发测数据：按阀点周期升序（时间越早越靠前）
+        1. 有整车发测数据：按实际日期升序（如 "2026.1.W4: 1/28" → 比较 2026-01-28）
         2. 无整车发测数据：排在最后
         """
 
@@ -54,12 +59,12 @@ class ProjectPlanService:
             if not vehicle_data:
                 return (1, (0, 0, 0))
 
-            # 情况1：有整车发测数据，将整车发测数据中的SOP和OTA数据合并取最小，以这个最小值去与其他项目比较
+            # 情况1：有整车发测数据，将SOP和OTA数据合并，提取实际日期取最小
             weeks = vehicle_data.get("SOP", []) + vehicle_data.get("OTA", [])
-            # "2026.1.W3" → (2026, 1, 3)
-            weeks = [ProjectPlanService.week_str_to_comparable(week) for week in weeks]
-            earliest_week = min(weeks)
-            return (0, earliest_week)
+            # "2026.1.W4: 1/28" → (2026, 1, 28)
+            dates = [ProjectPlanService.week_str_to_date_tuple(week) for week in weeks]
+            earliest_date = min(dates)
+            return (0, earliest_date)
 
         return sorted(data, key=get_sort_key)
 
@@ -182,11 +187,15 @@ class ProjectPlanService:
             for main_name, task_dict in main_data.items():
                 item = {"项目": main_name}
                 for task_name, task_list in task_dict.items():
-                    # 将 [{"阀点周期": "2026.5.W3", "单元格值": "SOP 1/19"}] 转换为 {"SOP": ["2026.5.W3"]}
+                    # {"SOP": ["2026.5.W3"]}改成{"SOP": ["2026.5.W3: 5/15"]}，"5/15"是单元格的值后半的具体时间，比如SOP+1 5/8发测，提取出5/8作为时间
                     task_data: Dict[str, List[str]] = {}
                     for entry in task_list:
                         cell_value = entry["单元格值"]
                         week = entry["阀点周期"]
+                        # 从单元格值中提取具体日期，如 "SOP+1 5/8发测" → "5/8"
+                        date_match = re.search(r"(\d+/\d+)", cell_value)
+                        date_str = date_match.group(1) if date_match else ""
+                        week_with_date = f"{week}: {date_str}" if date_str else week
                         # 判断单元格值包含哪个关键词，归类到对应列表
                         if "SOP" in cell_value:
                             key = "SOP"
@@ -196,7 +205,7 @@ class ProjectPlanService:
                             key = cell_value
                         if key not in task_data:
                             task_data[key] = []
-                        task_data[key].append(week)
+                        task_data[key].append(week_with_date)
                     item[task_name] = task_data
                 result.append(item)
             # 排序
@@ -211,10 +220,12 @@ class ProjectPlanService:
                 end_year += end_month // 12
                 end_month = end_month % 12
             three_months_later = now.replace(year=end_year, month=end_month)
-            current_week = ProjectPlanService.date_to_week_str(now)
-            end_week = ProjectPlanService.date_to_week_str(three_months_later)
-            current_tuple = ProjectPlanService.week_str_to_comparable(current_week)
-            end_tuple = ProjectPlanService.week_str_to_comparable(end_week)
+            current_date_tuple = (now.year, now.month, now.day)
+            end_date_tuple = (
+                three_months_later.year,
+                three_months_later.month,
+                three_months_later.day,
+            )
             upcoming_vehicle_data: List[Dict[str, Any]] = []
             for item in result:
                 vehicle_data = item.get("整车发测", {})
@@ -226,9 +237,9 @@ class ProjectPlanService:
 
                 # 判断是否有任意一条SOP或OTA在三个月范围内
                 has_upcoming = any(
-                    current_tuple
-                    <= ProjectPlanService.week_str_to_comparable(w)
-                    <= end_tuple
+                    current_date_tuple
+                    <= ProjectPlanService.week_str_to_date_tuple(w)
+                    <= end_date_tuple
                     for w in sop_weeks + ota_weeks
                 )
 
@@ -250,14 +261,14 @@ class ProjectPlanService:
         file_path: str,
         task_filter: Optional[List[str]] = None,
         cell_filter: Optional[List[str]] = None,
+        SET_DIR: Optional[str] = None,
     ) -> Dict[str, Any] | str:
         """异步包装解析函数，FastAPI接口调用专用"""
-        abs_path = settings.UPLOAD_DIR / file_path
+        abs_path = settings.UPLOAD_DIR / SET_DIR / file_path
         if not os.path.exists(abs_path):
-            abs_path = settings.UPLOAD_DIR / file_path
+            abs_path = settings.STATIC_DIR / SET_DIR / file_path
             if not os.path.exists(abs_path):
                 return "文件不存在"
-        print("abs_path", abs_path)
         # 2. 仅允许xlsx后缀
         if not abs_path.name.endswith(".xlsx"):
             return "仅支持.xlsx格式文件"

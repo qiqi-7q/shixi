@@ -1,10 +1,24 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
-from fastapi import HTTPException 
+from fastapi import HTTPException
 from typing import Optional
 from app.plugins.test_task_plugin import models, schemas
 from app.plugins.test_miles_plugin import models as miles_models
 from datetime import datetime
+
+
+def _normalize_date_range(start_date: Optional[str] = None, end_date: Optional[str] = None) -> tuple:
+    """
+    规范化日期范围
+    - 如果是纯日期格式（YYYY-MM-DD），自动添加时间部分
+    - start_date: YYYY-MM-DD -> YYYY-MM-DD 00:00:00
+    - end_date: YYYY-MM-DD -> YYYY-MM-DD 23:59:59
+    """
+    if start_date and isinstance(start_date, str) and len(start_date) == 10:
+        start_date = f"{start_date} 00:00:00"
+    if end_date and isinstance(end_date, str) and len(end_date) == 10:
+        end_date = f"{end_date} 23:59:59"
+    return start_date, end_date
 
 
 async def calculate_achievement_rate(test_mileage: float, actual_mileage: float) -> Optional[float]:
@@ -143,10 +157,11 @@ async def get_test_tasks(
     test_function: str = None, task_publisher: str = None,
     test_person: str = None, task_status: str = None
 ):
+    test_start_date, test_end_date = _normalize_date_range(test_start_date, test_end_date)
     stmt = select(models.TestTask)
 
     if project:
-        stmt = stmt.where(models.TestTask.project == project)
+        stmt = stmt.where(models.TestTask.project.contains(project))  
     if test_start_date:
         stmt = stmt.where(models.TestTask.test_time >= test_start_date)
     if test_end_date:
@@ -315,6 +330,8 @@ async def get_daily_task_count(db: AsyncSession, start_date: str = None, end_dat
         func.date(models.TestTask.created_at).label('date'),
         func.count(models.TestTask.id).label('count')
     )
+    # 规范化日期范围
+    start_date, end_date = _normalize_date_range(start_date, end_date)
     
     if start_date:
         stmt = stmt.where(models.TestTask.created_at >= start_date)
@@ -333,6 +350,8 @@ async def get_task_status_count(db: AsyncSession, start_date: str = None, end_da
         models.TestTask.task_status.label('status'),
         func.count(models.TestTask.id).label('count')
     )
+    # 规范化日期范围
+    start_date, end_date = _normalize_date_range(start_date, end_date)
     
     if start_date:
         stmt = stmt.where(models.TestTask.created_at >= start_date)
@@ -353,11 +372,14 @@ async def get_task_status_count(db: AsyncSession, start_date: str = None, end_da
 
 async def get_function_task_count(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None):
     """获取各功能任务量"""
+    # 规范化日期范围
+    start_date, end_date = _normalize_date_range(start_date, end_date)
+
     stmt = select(
         models.TestTask.test_function.label('function'),
         func.count(models.TestTask.id).label('count')
     )
-    
+
     if start_date:
         stmt = stmt.where(models.TestTask.created_at >= start_date)
     if end_date:

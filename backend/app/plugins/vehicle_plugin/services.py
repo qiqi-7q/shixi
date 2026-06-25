@@ -13,7 +13,25 @@ from app.utils.build_condition import build_condition, _find_enum_by_value
 
 from sqlalchemy import func
 
-from app.utils.vehicle_excel_import import ENUM_FIELD_LOOKUPS
+from app.utils.handle_excel_testrecord import (
+    build_enum_lookup,
+    generate_unique_key,
+    handle_excel_from_bytes,
+)
+
+
+def _normalize_date_range(start_date: Optional[str] = None, end_date: Optional[str] = None) -> tuple:
+    """
+    规范化日期范围
+    - 如果是纯日期格式（YYYY-MM-DD），自动添加时间部分
+    - start_date: YYYY-MM-DD -> YYYY-MM-DD 00:00:00
+    - end_date: YYYY-MM-DD -> YYYY-MM-DD 23:59:59
+    """
+    if start_date and isinstance(start_date, str) and len(start_date) == 10:
+        start_date = f"{start_date} 00:00:00"
+    if end_date and isinstance(end_date, str) and len(end_date) == 10:
+        end_date = f"{end_date} 23:59:59"
+    return start_date, end_date
 
 # ============================================================
 # Excel 中文表头 → Pydantic 英文字段名映射
@@ -33,11 +51,11 @@ EXCEL_FIELD_MAPPING: Dict[str, str] = {
     "驱动电机号/发动机号": "engine_num",
     "车牌号": "plate_number",
     "临牌到期时间": "temp_plate_expire_date",
-    "临牌已办理次数": "temp_plate_count",
+    "临牌已办次数": "temp_plate_count",
 }
 
 # 重复判定字段（vin_code + vehicle_code 组合唯一）
-REPEAT_VEHICLE_FIELDS = ("vin_code", "vehicle_code")
+REPEAT_VEHICLE_FIELDS = ["vin_code"]
 
 # 需要强制转为字符串的字段（Excel 中纯数字列会被 openpyxl 读取为 int/float）
 STRING_FIELDS = (
@@ -223,6 +241,225 @@ class VehicleService:
         await db.commit()
         return "success"
 
+    # ============================================================
+    # 工具函数
+    # ============================================================
+    @staticmethod
+    def _transform_record(record: dict) -> Optional[dict]:
+        transformed = {}
+        VEHICLE_STATUS_LOOKUP = build_enum_lookup(models.VehicleStatus)
+        VEHICLE_GROUP_LOOKUP = build_enum_lookup(models.VehicleGroup)
+        TEST_STATUS_LOOKUP = build_enum_lookup(models.TestStatus)
+
+        ENUM_FIELD_LOOKUPS = {
+            "vehicle_status": VEHICLE_STATUS_LOOKUP,
+            "group": VEHICLE_GROUP_LOOKUP,
+            "test_status": TEST_STATUS_LOOKUP,
+        }
+
+        for cn_key, en_key in EXCEL_FIELD_MAPPING.items():
+            if cn_key in record:
+                transformed[en_key] = record[cn_key]
+
+        # 空值归一化：除 vin_code 外，空字符串统一转为 None
+        for key in list(transformed.keys()):
+            if key != "vin_code":
+                val = transformed[key]
+                if isinstance(val, str) and not val.strip():
+                    transformed[key] = None
+
+        for field in STRING_FIELDS:
+            if field in transformed and transformed[field] is not None:
+                if not isinstance(transformed[field], str):
+                    transformed[field] = str(transformed[field])
+                transformed[field] = transformed[field].strip()
+
+        for enum_field, lookup in ENUM_FIELD_LOOKUPS.items():
+            if enum_field in transformed and transformed[enum_field] is not None:
+                raw = str(transformed[enum_field]).strip().upper()
+                if raw in lookup:
+                    transformed[enum_field] = lookup[raw]
+
+        # 日期字段归一化：Excel 可能输出 datetime 对象或 2026/11/12 格式的字符串，可以为空；
+        # 如果输入2026/11/12，将转换为 2026-11-12；如果输入2026-11-12，就保留
+        if "temp_plate_expire_date" in transformed:
+            raw_date = transformed["temp_plate_expire_date"]
+            if raw_date is None:
+                transformed["temp_plate_expire_date"] = None
+            elif isinstance(raw_date, datetime):
+                transformed["temp_plate_expire_date"] = raw_date.strftime("%Y-%m-%d")
+            elif isinstance(raw_date, str):
+                stripped = raw_date.strip()
+                if stripped and "/" in stripped:
+                    transformed["temp_plate_expire_date"] = stripped.replace("/", "-")
+                elif stripped and "-" in stripped:
+                    transformed["temp_plate_expire_date"] = stripped
+                try:
+                    parts = transformed["temp_plate_expire_date"].split("-")
+                    if len(parts) == 3:
+                        transformed["temp_plate_expire_date"] = (
+                            f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
+                        )
+                    else:
+                        transformed["temp_plate_expire_date"] = None
+                except (ValueError, TypeError):
+                    transformed["temp_plate_expire_date"] = None
+            else:
+                transformed["temp_plate_expire_date"] = None
+
+        return transformed
+
+    # ============================================================
+    # 核心入口：处理上传的车辆 Excel 文件并存入数据库
+    # ============================================================
+    @staticmethod
+    async def process_vehicle_excel_upload(
+        file: UploadFile, db: AsyncSession
+    ) -> dict | str:
+        # 1. 校验上传
+        if file is None:
+            return {"code": 400, "message": "文件上传失败：未接收到文件", "data": None}
+        if not file.filename:
+            return {"code": 400, "message": "文件上传失败：文件名为空", "data": None}
+
+        filename_lower = file.filename.lower()
+        if not (filename_lower.endswith(".xlsx") or filename_lower.endswith(".xls")):
+            return {
+                "code": 400,
+                "message": "文件上传失败：仅支持 .xlsx 或 .xls 格式",
+                "data": None,
+            }
+
+        # 2. 从内存读取Excel文件内容
+        content = await file.read()
+
+        try:
+            # 读取Excel文件：自动过滤全空行
+            try:
+                excel_records, headers = handle_excel_from_bytes(content)
+                total_excel_rows = len(excel_records)
+            except Exception as e:
+                return {
+                    "message": f"Excel数据处理失败：{str(e)}",
+                    "code": 400,
+                    "data": None,
+                }
+
+            # 3. 单次遍历完成：中文表头映射 + 类型转换 + 枚举转换 + 内存去重
+            transformed_records: List[dict] = []
+            seen_keys: Set[Tuple] = set()
+            excel_duplicate_count = 0
+
+            for record in excel_records:
+                transformed = VehicleService._transform_record(record)
+                if transformed is None:
+                    continue
+                unique_key = generate_unique_key(transformed, REPEAT_VEHICLE_FIELDS)
+                if unique_key in seen_keys:
+                    excel_duplicate_count += 1
+                    continue
+                seen_keys.add(unique_key)
+                transformed_records.append(transformed)
+
+            if not transformed_records:
+                return {
+                    "code": 200,
+                    "message": "导入完成（所有数据均为 Excel 内部重复）",
+                    "data": {
+                        "msg": "无有效数据可导入",
+                        "total_excel_rows": total_excel_rows,
+                        "excel_duplicate_rows": excel_duplicate_count,
+                        "db_duplicate_rows": 0,
+                        "success_import_rows": 0,
+                        "failed_import_rows": 0,
+                    },
+                }
+
+            # 4. 数据库去重：一次批量查询，避免 N+1
+            query_conditions = []
+            for record in transformed_records:
+                field_conds = []
+                for field in REPEAT_VEHICLE_FIELDS:
+                    value = record.get(field)
+                    if isinstance(value, str):
+                        value = value.strip()
+                    if value is None:
+                        field_conds.append(getattr(models.Vehicle, field).is_(None))
+                    else:
+                        field_conds.append(getattr(models.Vehicle, field) == value)
+                query_conditions.append(and_(*field_conds))
+
+            stmt = select(models.Vehicle).filter(or_(*query_conditions))
+            result = await db.execute(stmt)
+            existing_records = result.scalars().all()
+
+            existing_keys: Set[Tuple] = {
+                generate_unique_key(
+                    {f: getattr(r, f) for f in REPEAT_VEHICLE_FIELDS},
+                    REPEAT_VEHICLE_FIELDS,
+                )
+                for r in existing_records
+            }
+
+            final_records: List[dict] = []
+            db_duplicate_count = 0
+            for record in transformed_records:
+                if generate_unique_key(record, REPEAT_VEHICLE_FIELDS) in existing_keys:
+                    db_duplicate_count += 1
+                    continue
+                final_records.append(record)
+
+            if not final_records:
+                return {
+                    "code": 200,
+                    "message": "导入完成（所有数据已在数据库中）",
+                    "data": {
+                        "msg": "所有数据已存在，无需导入",
+                        "total_excel_rows": total_excel_rows,
+                        "excel_duplicate_rows": excel_duplicate_count,
+                        "db_duplicate_rows": db_duplicate_count,
+                        "success_import_rows": 0,
+                        "failed_import_rows": 0,
+                    },
+                }
+
+            # 5. Pydantic 校验
+            valid_records: List[models.Vehicle] = []
+            for idx, item_dict in enumerate(final_records):
+                try:
+                    validated = schemas.VehicleCreate(**item_dict)
+                    valid_records.append(models.Vehicle(**validated.model_dump()))
+                except Exception as e:
+                    return {
+                        "code": 400,
+                        "message": f"第 {idx + 2} 行数据格式错误：{e}",
+                        "data": None,
+                    }
+
+            # 6. 批量写入：单次 add_all + commit，事务安全
+            try:
+                db.add_all(valid_records)
+                await db.commit()
+            except Exception as e:
+                await db.rollback()
+                return {"code": 400, "message": f"数据库写入失败：{e}", "data": None}
+
+            # 7. 返回结果
+            return {
+                "code": 200,
+                "message": "文件上传并导入成功",
+                "data": {
+                    "msg": "批量导入完成",
+                    "total_excel_rows": total_excel_rows,
+                    "excel_duplicate_rows": excel_duplicate_count,
+                    "db_duplicate_rows": db_duplicate_count,
+                    "success_import_rows": len(final_records),
+                    "failed_import_rows": 0,
+                },
+            }
+        except Exception as e:
+            return {"code": 400, "message": f"导入失败：{e}", "data": None}
+
 
 class BorrowService:
 
@@ -241,7 +478,7 @@ class BorrowService:
         model: Optional[str] = None,
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
-        driver_name: Optional[str] = None,
+        driver_name: Optional[str] = None
     ) -> dict:
         stmt = select(models.BorrowRecord)
         if borrow_status:
@@ -327,7 +564,7 @@ class BorrowService:
                 models.BorrowRecord.vehicle_id == vehicle_id,
                 models.BorrowRecord.borrow_status == "active",
             )
-        )
+        ).order_by(models.BorrowRecord.id.desc())
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
@@ -511,12 +748,15 @@ class VehicleStatsService:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> list:
-        """获取每辆车的借用次数统计
+        """获取每种车型的借用次数统计
         计算逻辑：
-        - 每辆车的借用次数：同一车辆同一天多次借用只算一次
-        - 总借用次数：所有符合条件车辆的借用次数之和
-        - 占比：该车借用次数 / 总借用次数 * 100%
+        - 每种车型的借用次数：该车型下所有车辆的借用次数之和（同一车辆同一天多次借用只算一次）
+        - 总借用次数：所有符合条件车型的借用次数之和
+        - 占比：该车型借用次数 / 总借用次数 * 100%
         """
+        # 规范化日期范围
+        start_date, end_date = _normalize_date_range(start_date, end_date)
+
         # 1. 构建车辆筛选条件
         vehicle_filters = []
         if model:
@@ -552,11 +792,10 @@ class VehicleStatsService:
         vehicle_subq = select(
             models.Vehicle.id,
             models.Vehicle.model,
-            models.Vehicle.vehicle_code,
-            models.Vehicle.vin_code,
         )
         if vehicle_filters:
             vehicle_subq = vehicle_subq.where(*vehicle_filters)
+        vehicle_sub = vehicle_subq.subquery()
 
         # 3. 计算每辆车的借用次数（去重：同一天多次借用算一次）
         borrow_subq = select(
@@ -565,52 +804,49 @@ class VehicleStatsService:
                 "borrow_count"
             ),
         )
-
         if start_date:
             borrow_subq = borrow_subq.where(
                 models.BorrowRecord.borrow_time >= start_date
             )
         if end_date:
             borrow_subq = borrow_subq.where(models.BorrowRecord.borrow_time <= end_date)
+        borrow_sub = borrow_subq.group_by(models.BorrowRecord.vehicle_id).subquery()
 
-        borrow_subq = borrow_subq.group_by(models.BorrowRecord.vehicle_id).subquery()
-
-        # 4. 关联查询：车辆信息 + 借用次数
-        # 将子查询保存到变量，避免每次调用 .subquery() 创建新对象
-        vehicle_sub = vehicle_subq.subquery()
-
-        stmt = select(
-            vehicle_sub.c.id.label("vehicle_id"),
+        # 4. 关联查询：车辆信息 + 借用次数，然后按车型汇总
+        # 先关联车辆和借用记录，得到每辆车的借用次数
+        vehicle_borrow_subq = select(
             vehicle_sub.c.model,
-            vehicle_sub.c.vehicle_code,
-            vehicle_sub.c.vin_code,
-            func.coalesce(borrow_subq.c.borrow_count, 0).label("borrow_count"),
+            func.coalesce(borrow_sub.c.borrow_count, 0).label("borrow_count"),
         ).select_from(
             vehicle_sub.outerjoin(
-                borrow_subq, vehicle_sub.c.id == borrow_subq.c.vehicle_id
+                borrow_sub, vehicle_sub.c.id == borrow_sub.c.vehicle_id
             )
         )
+        vehicle_borrow_sub = vehicle_borrow_subq.subquery()
+
+        # 按车型汇总借用次数
+        stmt = select(
+            vehicle_borrow_sub.c.model.label("model"),
+            func.sum(vehicle_borrow_sub.c.borrow_count).label("borrow_count"),
+        ).group_by(vehicle_borrow_sub.c.model)
 
         result = await db.execute(stmt)
-        vehicle_data = []
+        model_data = []
         total_borrow_count = 0
 
         for row in result.all():
             borrow_count = row.borrow_count
             total_borrow_count += borrow_count
-            vehicle_data.append(
+            model_data.append(
                 {
-                    "vehicle_id": row.vehicle_id,
                     "model": row.model,
-                    "vehicle_code": row.vehicle_code,
-                    "vin_code": row.vin_code,
                     "borrow_count": borrow_count,
-                    "proportion": 0,  # 占比后续计算
+                    "proportion": 0,
                 }
             )
 
-        # 5. 计算每辆车的借用占比
-        for item in vehicle_data:
+        # 5. 计算每种车型的借用占比
+        for item in model_data:
             if total_borrow_count > 0:
                 item["proportion"] = round(
                     item["borrow_count"] / total_borrow_count * 100, 2
@@ -619,12 +855,12 @@ class VehicleStatsService:
                 item["proportion"] = 0
 
         # 6. 按借用次数降序排序
-        vehicle_data.sort(key=lambda x: x["borrow_count"], reverse=True)
+        model_data.sort(key=lambda x: x["borrow_count"], reverse=True)
 
         return {
-            "items": vehicle_data,
+            "items": model_data,
             "total_borrow_count": total_borrow_count,
-            "total_vehicle_count": len(vehicle_data),
+            "total_model_count": len(model_data),
         }
 
     @staticmethod

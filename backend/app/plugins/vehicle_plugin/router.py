@@ -9,8 +9,6 @@ from app.core.database import get_db
 from app.plugins.vehicle_plugin import models, schemas, services
 from app.utils.data_collection import parse_url_query
 
-from app.utils.vehicle_excel_import import process_vehicle_excel_upload
-
 router = APIRouter()
 
 
@@ -119,8 +117,12 @@ async def get_vehicles(
     if conditions:
         for cond in conditions:
             # 支持多种字段名格式
-            field_name = cond.get("advanced_field") or cond.get("field") or cond.get("column")
-            operator = cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            field_name = (
+                cond.get("advanced_field") or cond.get("field") or cond.get("column")
+            )
+            operator = (
+                cond.get("advanced_operator") or cond.get("operator") or cond.get("op")
+            )
             field_value = cond.get("advanced_value") or cond.get("value")
 
             if not field_name:
@@ -143,14 +145,31 @@ async def get_vehicles(
 
             # between/not_between 的值必须是数组
             if operator in ("between", "not_between"):
-                if (
-                    not isinstance(field_value, list)
-                    or len(field_value) != 2
-                ):
+                if not isinstance(field_value, list) or len(field_value) != 2:
                     return {
                         "message": f"操作符 {operator} 的值必须是包含两个元素的数组",
                         "code": 400,
                     }
+                # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
+                if field_name in TIME_FIELDS: 
+
+                    start_value = field_value[0]
+                    end_value = field_value[1]
+
+                    # 处理开始时间：如果是纯日期，添加 00:00:00
+                    if isinstance(start_value, str) and len(start_value) == 10:
+                        start_value = f"{start_value} 00:00:00"
+
+                    # 处理结束时间：如果是纯日期，添加 23:59:59
+                    if isinstance(end_value, str) and len(end_value) == 10:
+                        end_value = f"{end_value} 23:59:59"
+
+                    # 更新条件中的值
+                    cond["value"] = [start_value, end_value]
+                    # 如果使用的是 advanced_value，也需要更新
+                    if "advanced_value" in cond:
+                        cond["advanced_value"] = [start_value, end_value]
+            
 
             if field_name not in schemas.VEHICLE_WHITELIST:
                 return {
@@ -274,7 +293,7 @@ async def vehicle_import(file: UploadFile, db: AsyncSession = Depends(get_db)):
     """
     批量本地数据导入（上传Excel文件）
     """
-    result = await process_vehicle_excel_upload(file, db)
+    result = await services.VehicleService.process_vehicle_excel_upload(file, db)
     return result
 
 
@@ -341,7 +360,7 @@ async def get_borrow_records_simple(
     vin_code: Optional[str] = None,
     borrow_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    driver_name: Optional[str] = None,
+    driver_name: Optional[str] = None
 ):
     """获取借用记录列表"""
     records = await services.BorrowService.get_borrow_records_simple(
@@ -396,6 +415,25 @@ async def get_borrow_records(
                         "code": 400,
                         "data": None,
                     }
+                # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
+                if field_name in TIME_FIELDS: 
+
+                    start_value = field_value[0]
+                    end_value = field_value[1]
+
+                    # 处理开始时间：如果是纯日期，添加 00:00:00
+                    if isinstance(start_value, str) and len(start_value) == 10:
+                        start_value = f"{start_value} 00:00:00"
+
+                    # 处理结束时间：如果是纯日期，添加 23:59:59
+                    if isinstance(end_value, str) and len(end_value) == 10:
+                        end_value = f"{end_value} 23:59:59"
+
+                    # 更新条件中的值
+                    cond["value"] = [start_value, end_value]
+                    # 如果使用的是 advanced_value，也需要更新
+                    if "advanced_value" in cond:
+                        cond["advanced_value"] = [start_value, end_value]
 
             if field_name not in schemas.BORROW_WHITELIST:
                 return {
