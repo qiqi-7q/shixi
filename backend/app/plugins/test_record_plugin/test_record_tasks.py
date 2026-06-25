@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -8,20 +9,18 @@ logger = logging.getLogger("test_record_scheduler")  # 创建一个名为###的�
 logger.setLevel(logging.INFO)  # 设置日志级别为INFO，只记录INFO及以上级别的日志
 # 配置日志记录器，将日志写入test_record_scheduler.log文件,路径为logs/test_record_scheduler.log，日志文件不存在则创建，每次重启时清空日志
 if not logger.handlers:
+    settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
     log_file = settings.LOG_DIR / "test_record_scheduler.log"
-    # 尝试清空日志文件，如果失败则继续执行
-    try:
-        if log_file.exists():
-            log_file.unlink()  # 每次重启时清空日志
-    except Exception as e:
-        logger.warning(f"无法清空日志文件 {log_file}: {e}")
 
     try:
-        handler = logging.FileHandler(
-            log_file, encoding="utf-8"
-        )  # 创建一个文件处理器，将日志写入scheduler.log文件
+        # 单个日志最大10MB，最多保留10个归档日志
+        handler = RotatingFileHandler(
+            log_file, maxBytes=10 * 1024 * 1024, backupCount=10, encoding="utf-8"
+        )
         handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            logging.Formatter(
+                "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
+            )
         )  # 设置日志格式，包含时间、级别和信息
         logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
     except Exception as e:

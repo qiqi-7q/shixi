@@ -459,7 +459,7 @@ class BorrowService:
         model: Optional[str] = None,
         vin_code: Optional[str] = None,
         borrow_status: Optional[str] = None,
-        driver_name: Optional[str] = None
+        driver_name: Optional[str] = None,
     ) -> dict:
         stmt = select(models.BorrowRecord)
         if borrow_status:
@@ -574,13 +574,15 @@ class BorrowService:
             return "借用时间不能为空"
         # 获取当前日期（只要年月日）
         current_time = date.today()
+        print("current", current_time, borrow.borrow_time)
         if borrow.borrow_time < current_time:
             return "借用时间必须是今天及之后的日期"
 
         # 检查车辆是否存在
         vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
-        if not vehicle:
-            return "车辆信息不存在"
+        print(vehicle)
+        if isinstance(vehicle, str):
+            return vehicle
         if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
             return "车辆正在维护，无法借用"
         # 事务

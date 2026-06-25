@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import xlsxwriter
 from app.core.config import settings
 from app.core.database import get_db
+from app.plugins.auth_plugin.models import User
+from app.plugins.auth_plugin.router import get_current_user
 from app.plugins.test_record_plugin import schemas, services
 from app.plugins.test_record_plugin.models import (
     FunctionMode,
@@ -23,9 +25,15 @@ router = APIRouter()
 # 1. 创建单条记录
 @router.post("/createrecord")
 async def create_record(
-    record: schemas.TestRecordCreate, db: AsyncSession = Depends(get_db)
+    record: schemas.TestRecordCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    result = await services.create_test_record(db=db, record=record)
+    if not current_user:
+        return {"message": "用户未登录", "code": 401, "data": None}
+    result = await services.create_test_record(
+        db=db, record=record, current_user=current_user
+    )
     if result == "success":
         return {"message": "测试记录创建成功", "code": 200, "data": None}
     else:
@@ -43,8 +51,12 @@ async def get_records(
     function_mode: Optional[FunctionMode] = None,
     problem_category: Optional[EvaluationDimension] = None,
     kpi_type: Optional[KPIType] = None,
-    software_version: Optional[str] = None
+    software_version: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
 ):
+    if not current_user:
+        return {"message": "用户未登录", "code": 401, "data": None}
+
     result = await services.get_test_records(
         db,
         skip=skip,
@@ -55,10 +67,14 @@ async def get_records(
         problem_category=problem_category,
         kpi_type=kpi_type,
         software_version=software_version,
+        current_user=current_user,
     )
     return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
 
+
 TIME_FIELDS = {"created_at", "updated_at", "problem_time"}
+
+
 @router.post("/advsearch")
 async def get_records_advanced(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
@@ -144,6 +160,7 @@ async def get_records_advanced(
         conditions=conditions,
     )
     return {"data": records, "message": "success", "code": 200}
+
 
 ############################
 

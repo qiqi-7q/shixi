@@ -77,7 +77,7 @@ class BorrowRecordBase(BaseModel):
     vehicle_code: Optional[str] = Field(None, max_length=50, description="车辆编号")
     vin_code: str = Field(..., max_length=17, description="VIN码")
     borrower: str = Field(..., max_length=100, description="借用人")
-    borrow_time: datetime = Field(..., description="借用时间")
+    borrow_time: date = Field(..., description="借用时间")
     driver_name: Optional[str] = Field(None, max_length=100, description="司机姓名")
     driver_work: Optional[str] = Field(None, max_length=50, description="司机工作安排")
     driver_performance: Optional[str] = Field(
@@ -99,7 +99,7 @@ class BorrowRecordUpdate(BaseModel):
     vehicle_code: Optional[str] = Field(None, max_length=50, description="车辆编号")
     vin_code: Optional[str] = Field(None, max_length=17, description="VIN码")
     borrower: Optional[str] = Field(None, max_length=100, description="借用人")
-    borrow_time: Optional[datetime] = Field(None, description="借用时间")
+    borrow_time: Optional[date] = Field(None, description="借用时间")
     driver_name: Optional[str] = Field(None, max_length=100, description="司机姓名")
     borrow_status: Optional[str] = Field(
         None, max_length=20, description="借用状态：active/returned/cancelled"

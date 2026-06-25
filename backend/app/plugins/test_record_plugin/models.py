@@ -75,6 +75,7 @@ class TestRecord(Base):
     # 你要求的固定字段
     project = Column(String(100), comment="项目")
     car_type = Column(String(100), comment="车型")
+    creator = Column(String(50), comment="创建人")
     function_mode = Column(
         Enum(FunctionMode), index=True, default=FunctionMode.NAP, comment="功能模式"
     )

@@ -1,5 +1,6 @@
 from datetime import date
 import logging
+from logging.handlers import RotatingFileHandler
 from sqlalchemy import exists, select, update
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -10,17 +11,15 @@ logger.setLevel(logging.INFO)
 # 使用 settings.BASE_DIR 获取项目根目录
 # 配置日志记录器，将日志写入vehicle_scheduler.log文件,路径为logs/vehicle_scheduler.log
 if not logger.handlers:
+    # 确保日志目录存在
+    settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
     log_file = settings.LOG_DIR / "vehicle_scheduler.log"
-    try:
-        if log_file.exists():
-            log_file.unlink()  # 每次重启时清空日志
-    except Exception as e:
-        logger.warning(f"无法清空日志文件 {log_file}: {e}")
 
     try:
-        handler = logging.FileHandler(
-            log_file, encoding="utf-8"
-        )  # 创建一个文件处理器，将日志写入vehicle_scheduler.log文件
+        # 单个日志最大10MB，最多保留10个归档日志
+        handler = RotatingFileHandler(
+            log_file, maxBytes=10 * 1024 * 1024, backupCount=10, encoding="utf-8"
+        )
         handler.setFormatter(
             logging.Formatter(
                 "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"

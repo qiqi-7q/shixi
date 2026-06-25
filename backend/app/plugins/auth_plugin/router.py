@@ -12,30 +12,34 @@ from app.core.redis_client import redisserve
 from app.plugins.auth_plugin import models, schemas, services
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://127.0.0.1:8000/api/auth/login")
 
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """获取当前用户，验证失败返回 None"""
-
+    print("token", token)
     # 检查token是否在黑名单中
-    if redisserve.is_token_blacklisted(token):
+    if await redisserve.is_token_blacklisted(token):
         return None
 
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
+        print("payload", payload)
         username: str = payload.get("sub")
         if username is None:
             return None
         token_data = schemas.TokenData(username=username)
     except JWTError:
         return None
+    print("token_data", token_data)
+    user = await services.AuthService.get_user_by_username(
+        db, username=token_data.username
+    )
 
-    user = await services.AuthService.get_user_by_username(db, username=token_data.username)
     return user
 
 
@@ -43,19 +47,23 @@ async def get_current_user(
 async def register(user: schemas.UserCreate, db: AsyncSession = Depends(get_db)):
     """用户注册"""
     result = await services.AuthService.create_user(db=db, user=user)
-    
+
     # 注册成功后生成token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = services.AuthService.create_access_token(
         data={"sub": result.username}, expires_delta=access_token_expires
     )
-    
+
     # 将token存储到Redis
     await redisserve.set_token(
         result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
-    
-    return {"code": 201, "message": "注册成功", "data": {"user": result, "access_token": access_token, "token_type": "bearer"}}
+
+    return {
+        "code": 201,
+        "message": "注册成功",
+        "data": {"user": result, "access_token": access_token, "token_type": "bearer"},
+    }
 
 
 @router.post("/login")
@@ -80,7 +88,16 @@ async def login(
         user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
     )
 
-    return {"code": 200, "message": "登录成功", "data": {"username": user.username,"full_name": user.full_name, "access_token": access_token, "token_type": "bearer"}}
+    return {
+        "code": 200,
+        "message": "登录成功",
+        "data": {
+            "username": user.username,
+            "full_name": user.full_name,
+            "access_token": access_token,
+            "token_type": "bearer",
+        },
+    }
 
 
 @router.post("/logout")
@@ -91,7 +108,7 @@ async def logout(
     """用户登出"""
     if not current_user:
         return {"code": 401, "message": "Could not validate credentials", "data": None}
-    
+
     # 将token加入黑名单
     await redisserve.blacklist_token(token)
     await redisserve.delete_token(current_user.id)
@@ -101,6 +118,7 @@ async def logout(
 @router.get("/me")
 async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
+    print("current_user", current_user)
     if not current_user:
         return {"code": 401, "message": "Could not validate credentials", "data": None}
     return {"code": 200, "message": "获取成功", "data": current_user}
@@ -115,7 +133,7 @@ async def update_password(
     """修改密码"""
     if not current_user:
         return {"code": 401, "message": "Could not validate credentials", "data": None}
-    
+
     # 验证旧密码
     if not services.AuthService.verify_password(
         password_update.old_password, current_user.hashed_password
@@ -138,7 +156,7 @@ async def forget_password(
     stmt = select(models.User).where(models.User.username == username)
     result = await db.execute(stmt)
     current_user = result.scalar_one_or_none()
-    
+
     if not current_user:
         return {"code": 400, "message": "用户不存在", "data": None}
 
@@ -147,4 +165,8 @@ async def forget_password(
         subject="忘记密码邮件",
         body=f"您的新密码是{current_user.hashed_password}",
     )
-    return {"message": "Password has been sent to your email address","code":200,"data":current_user}
+    return {
+        "message": "Password has been sent to your email address",
+        "code": 200,
+        "data": current_user,
+    }
