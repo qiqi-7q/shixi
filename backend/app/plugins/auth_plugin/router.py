@@ -51,10 +51,10 @@ async def register(user: schemas.UserCreate, db: AsyncSession = Depends(get_db))
         data={"sub": result.username}, expires_delta=access_token_expires
     )
 
-    # 将token存储到Redis
-    await redisserve.set_token(
-        result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+    # # 将token存储到Redis
+    # await redisserve.set_token(
+    #     result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    # )
 
     return {
         "code": 201,
@@ -81,10 +81,10 @@ async def login(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
 
-    # 将token存储到Redis
-    await redisserve.set_token(
-        user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    )
+    # # 将token存储到Redis
+    # await redisserve.set_token(
+    #     user.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    # )
 
     return {
         "code": 200,

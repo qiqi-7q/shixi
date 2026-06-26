@@ -468,10 +468,12 @@ async def borrowed_records(
 async def create_borrow_record(
     borrow: schemas.BorrowRecordCreate,
     db: AsyncSession = Depends(get_db),
-    # current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """创建借用记录"""
-    result = await services.BorrowService.create_borrow_record(db, borrow)
+    if not current_user:
+        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+    result = await services.BorrowService.create_borrow_record(db, borrow, current_user)
     if result == "success":
         return {
             "message": "借用记录创建成功",

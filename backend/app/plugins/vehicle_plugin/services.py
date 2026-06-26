@@ -572,7 +572,7 @@ class BorrowService:
 
     @staticmethod
     async def create_borrow_record(
-        db: AsyncSession, borrow: schemas.BorrowRecordCreate
+        db: AsyncSession, borrow: schemas.BorrowRecordCreate, current_user
     ) -> str:
         if not borrow.borrower:
             return "借用人不能为空"
@@ -611,6 +611,7 @@ class BorrowService:
                     pass
 
             # 创建借用记录
+            borrow.record_creator = current_user.full_name
             db_borrow = models.BorrowRecord(**borrow.model_dump())
 
             db.add(db_borrow)
