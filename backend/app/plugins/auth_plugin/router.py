@@ -19,7 +19,6 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """获取当前用户，验证失败返回 None"""
-    print("token", token)
     # 检查token是否在黑名单中
     if await redisserve.is_token_blacklisted(token):
         return None
@@ -28,14 +27,12 @@ async def get_current_user(
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
-        print("payload", payload)
         username: str = payload.get("sub")
         if username is None:
             return None
         token_data = schemas.TokenData(username=username)
     except JWTError:
         return None
-    print("token_data", token_data)
     user = await services.AuthService.get_user_by_username(
         db, username=token_data.username
     )
@@ -79,6 +76,7 @@ async def login(
         return {"code": 401, "message": "Incorrect username or password", "data": None}
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+
     access_token = services.AuthService.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
@@ -119,7 +117,7 @@ async def logout(
 @router.get("/me")
 async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
-    print("current_user", current_user)
+
     if not current_user:
         return {"code": 401, "message": "Could not validate credentials", "data": None}
     return {"code": 200, "message": "获取成功", "data": current_user}

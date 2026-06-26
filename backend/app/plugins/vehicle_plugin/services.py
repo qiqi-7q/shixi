@@ -1066,7 +1066,7 @@ class BorrowStatsService:
 
         # 借用中数量
         active_stmt = select(func.count(models.BorrowRecord.id)).where(
-            models.BorrowRecord.borrow_status == "active"
+            models.BorrowRecord.borrow_status == "borrowing"
         )
         if filters:
             active_stmt = active_stmt.where(*filters)
@@ -1136,7 +1136,7 @@ class BorrowStatsService:
         status_counts = {row.status: row.count for row in result.all()}
 
         return [
-            {"status": "借用中", "count": status_counts.get("active", 0)},
+            {"status": "借用中", "count": status_counts.get("borrowing", 0)},
             {"status": "已归还", "count": status_counts.get("returned", 0)},
             {"status": "已取消", "count": status_counts.get("cancelled", 0)},
             {"status": "已预定", "count": status_counts.get("reserved", 0)},

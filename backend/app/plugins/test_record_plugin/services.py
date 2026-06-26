@@ -88,9 +88,9 @@ async def get_test_records(
 ):
     stmt = select(models.TestRecord)
     if project:
-        stmt = stmt.filter(models.TestRecord.project.contains(project))
+        stmt = stmt.filter(models.TestRecord.project.icontains(project))
     if car_type:
-        stmt = stmt.filter(models.TestRecord.car_type == car_type)
+        stmt = stmt.filter(models.TestRecord.car_type.icontains(car_type))
     if function_mode:
         stmt = stmt.filter(models.TestRecord.function_mode == function_mode)
     if problem_category:
@@ -326,7 +326,7 @@ def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
 # -----------------------------------------------------------------------------
 
 
-async def batch_import_records(file, db: AsyncSession):
+async def batch_import_records(file, db: AsyncSession, current_user):
     # 1. 入口参数强制校验
     # 使用 duck typing 检查，避免类型导入问题
     if not hasattr(file, "filename") or not hasattr(file, "read"):
@@ -481,7 +481,10 @@ async def batch_import_records(file, db: AsyncSession):
         if valid_records:
             try:
                 for record in valid_records:
-                    db.add(models.TestRecord(**record.dict()))
+                    record_dict = record.dict()
+                    record_dict["creator"] = current_user.full_name
+                    record_dict["creator_id"] = current_user.id
+                    db.add(models.TestRecord(**record_dict))
                 await db.commit()
                 success_count = len(valid_records)
             except Exception as e:
@@ -515,6 +518,7 @@ async def batch_import_records(file, db: AsyncSession):
             try:
                 os.remove(temp_file_path)
             except Exception as e:
+                print(f"清理临时文件出现问题，问题是：{e}")
                 # 清理失败不影响主流程，仅记录日志
                 pass
 

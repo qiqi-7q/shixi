@@ -201,12 +201,15 @@ async def delete_record(record_id: int, db: AsyncSession = Depends(get_db)):
 async def batch_import(
     file: UploadFile = File(..., description="Excel文件（.xlsx格式）"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     批量导入测试记录（文件上传）
     上传Excel文件，批量导入测试记录数据。自动进行数据去重、格式校验和批量写入。
     """
-    result = await services.batch_import_records(file, db)
+    if not current_user:
+        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+    result = await services.batch_import_records(file, db, current_user)
     return result
 
 
