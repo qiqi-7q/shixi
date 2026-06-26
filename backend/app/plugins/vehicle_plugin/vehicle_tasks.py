@@ -7,28 +7,17 @@ from app.plugins.vehicle_plugin import models
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-# 使用 settings.BASE_DIR 获取项目根目录
-# 配置日志记录器，将日志写入vehicle_scheduler.log文件,路径为logs/vehicle_scheduler.log
 if not logger.handlers:
     log_file = settings.LOG_DIR / "vehicle_scheduler.log"
-    try:
-        if log_file.exists():
-            log_file.unlink()  # 每次重启时清空日志
-    except Exception as e:
-        logger.warning(f"无法清空日志文件 {log_file}: {e}")
-
-    try:
-        handler = logging.FileHandler(
-            log_file, encoding="utf-8"
-        )  # 创建一个文件处理器，将日志写入vehicle_scheduler.log文件
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
-            )
-        )  # 设置日志格式，包含时间、接口名称(如，refresh_vehicle_status_task)、级别和信息
-        logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
-    except Exception as e:
-        logger.error(f"无法创建vehicle_scheduler.log日志文件，错误信息为: {e}")
+    handler = logging.FileHandler(
+        log_file, mode="w", encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
+        )
+    )
+    logger.addHandler(handler)
 
 
 async def re_vs_task():

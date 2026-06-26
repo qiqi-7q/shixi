@@ -407,33 +407,31 @@ async def batch_import_records(file, db: AsyncSession):
                 "success_import_rows": 0,
             }
 
-        # 4.1 批量查询数据库中已存在的重复数据（高性能，无循环请求）
-        # 构建查询条件：所有唯一键的组合
-        query_conditions = []
+        # 4.1 批量查询数据库中已存在的重复数据（高性能，使用IN查询）
+        # 构建查询条件：基于去重字段进行高效查询
+        field_conditions = []
+
+        # 分别收集每个去重字段的所有值
+        field_values = {field: set() for field in REPEAT_CHECK_FIELDS}
         for record in unique_records:
-            # 为每条数据构建字段匹配条件
-            field_conditions = []
             for field in REPEAT_CHECK_FIELDS:
                 value = record.get(field)
                 if isinstance(value, str):
                     value = value.strip()
-                # 处理空值：数据库里的NULL和Python的None匹配
-                if value is None:
-                    field_conditions.append(getattr(models.TestRecord, field).is_(None))
-                else:
-                    # 处理时间字段：Excel中是字符串，数据库中是datetime，需要转换后比较
-                    # 使用func.date_format将数据库datetime转换为字符串格式进行比较
-                    if field == 'problem_time' and isinstance(value, str):
-                        field_conditions.append(
-                            func.date_format(getattr(models.TestRecord, field), "%Y-%m-%d %H:%i:%s") == value
-                        )
-                    else:
-                        field_conditions.append(getattr(models.TestRecord, field) == value)
-            # 把单条数据的所有字段条件合并
-            query_conditions.append(and_(*field_conditions))
+                if value is not None:  # 跳过None值，避免IN查询问题
+                    field_values[field].add(value)
 
-        # 4.2 执行查询：获取所有已存在的重复数据的唯一键（使用异步方法）
-        stmt = select(models.TestRecord).filter(or_(*query_conditions))
+        # 构建组合查询：任一去重字段匹配就作为候选（后续再精确过滤）
+        for field, values in field_values.items():
+            if values:
+                field_conditions.append(getattr(models.TestRecord, field).in_(values))
+        
+        # 执行查询：获取所有可能的候选记录
+        if field_conditions:
+            stmt = select(models.TestRecord).filter(or_(*field_conditions))
+        else:
+            stmt = select(models.TestRecord)  # 如果没有有效条件，查询所有（边缘情况）
+        
         result = await db.execute(stmt)
         existing_records = result.scalars().all()
 

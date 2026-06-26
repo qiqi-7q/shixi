@@ -4,28 +4,17 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.plugins.test_record_plugin import services
 
-logger = logging.getLogger("test_record_scheduler")  # 创建一个名为###的日志记录器
-logger.setLevel(logging.INFO)  # 设置日志级别为INFO，只记录INFO及以上级别的日志
-# 配置日志记录器，将日志写入test_record_scheduler.log文件,路径为logs/test_record_scheduler.log，日志文件不存在则创建，每次重启时清空日志
+logger = logging.getLogger("test_record_scheduler")
+logger.setLevel(logging.INFO)
 if not logger.handlers:
     log_file = settings.LOG_DIR / "test_record_scheduler.log"
-    # 尝试清空日志文件，如果失败则继续执行
-    try:
-        if log_file.exists():
-            log_file.unlink()  # 每次重启时清空日志
-    except Exception as e:
-        logger.warning(f"无法清空日志文件 {log_file}: {e}")
-
-    try:
-        handler = logging.FileHandler(
-            log_file, encoding="utf-8"
-        )  # 创建一个文件处理器，将日志写入scheduler.log文件
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        )  # 设置日志格式，包含时间、级别和信息
-        logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
-    except Exception as e:
-        logger.error(f"无法创建日志文件处理器: {e}")
+    handler = logging.FileHandler(
+        log_file, mode="w", encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    logger.addHandler(handler)
 
 
 async def refresh_data_links_job():
