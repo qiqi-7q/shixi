@@ -49,7 +49,6 @@ class VehicleUpdate(BaseModel):
     parking_location: Optional[str] = Field(
         None, max_length=200, description="停车地点"
     )
-    # vehicle_status 允许编辑，但改为 BORROWED 时必须同时填写借用信息
     vehicle_status: Optional[VehicleStatus] = Field(None, description="使用状态")
     test_status: Optional[TestStatus] = Field(None, description="车辆状态")
     engine_num: Optional[str] = Field(
@@ -58,13 +57,6 @@ class VehicleUpdate(BaseModel):
     temp_plate_expire_date: Optional[date] = Field(None, description="临牌到期时间")
     temp_plate_count: Optional[int] = None
     remarks: Optional[str] = Field(None, description="备注")
-    # 借用相关字段（仅 vehicle_status 改为 BORROWED 时必填）
-    borrower: Optional[str] = Field(None, max_length=100, description="借用人")
-    borrow_time: Optional[date] = Field(None, description="借用时间")
-    driver_name: Optional[str] = Field(None, max_length=100, description="司机姓名")
-    driver_work: Optional[str] = Field(None, max_length=50, description="司机工作安排")
-    driver_performance: Optional[str] = Field(None, max_length=100, description="司机绩效")
-    record_creator: Optional[str] = Field(None, max_length=50, description="记录创建人")
 
 
 class VehicleResponse(VehicleBase):
