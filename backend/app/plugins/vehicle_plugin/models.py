@@ -93,7 +93,7 @@ class BorrowRecord(Base):
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
     borrow_status = Column(
         String(20),
-        default="active",
+        default="borrowing",
         comment="借用状态（borrowing/returned/cancelled/reserved）",
     )
     updated_at = Column(

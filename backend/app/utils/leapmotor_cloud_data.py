@@ -5,9 +5,11 @@ import uuid
 
 import requests
 
-BASE_URL = "https://test-data-open-platform.leapmotor.com"
-APP_ID = "57fb1e5c037a4e2ca0d8e20a20114173"
-APP_SECRET = "czjVYxu1RqcD4TdGYmDDP7rcqay0zTKxUfLrfE/YUayCv0nkeHwD79a4FD3zqmIG"
+LEAPMOTOR_CLOUD_URL = "https://test-data-open-platform.leapmotor.com"
+LEAPMOTOR_CLOUD_APP_ID = "57fb1e5c037a4e2ca0d8e20a20114173"
+LEAPMOTOR_CLOUD_APP_SECRET = (
+    "czjVYxu1RqcD4TdGYmDDP7rcqay0zTKxUfLrfE/YUayCv0nkeHwD79a4FD3zqmIG"
+)
 
 
 def convert_value_to_string(value):
@@ -33,7 +35,7 @@ def generate_signature(timestamp, nonce, path_vars=None, query_params=None):
     params = {}
     params["timestamp"] = str(timestamp)
     params["nonce"] = nonce
-    params["appSecret"] = APP_SECRET
+    params["appSecret"] = LEAPMOTOR_CLOUD_APP_SECRET
 
     if path_vars:
         for k, v in path_vars.items():

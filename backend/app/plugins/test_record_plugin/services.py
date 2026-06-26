@@ -22,7 +22,9 @@ from datetime import datetime, date, time, timezone, timedelta
 
 
 # 创建
-async def create_test_record(db: AsyncSession, record: schemas.TestRecordCreate, current_user: User):
+async def create_test_record(
+    db: AsyncSession, record: schemas.TestRecordCreate, current_user: User
+):
     record.creator = current_user.full_name
     db_record = models.TestRecord(**record.model_dump())
     db.add(db_record)
@@ -73,7 +75,7 @@ async def get_test_records_adv(
 # 获取列表
 async def get_test_records(
     db: AsyncSession,
-current_user: User,
+    current_user: User,
     skip: int = 0,
     limit: int = 100,
     project: Optional[str] = None,
@@ -101,16 +103,21 @@ current_user: User,
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
 
-    stmt = stmt.offset(skip).limit(limit).order_by(
-        case(
-            (models.TestRecord.creator == current_user.full_name, 0),
-            else_=1,
-        ),
-        models.TestRecord.created_at.desc(),
+    stmt = await db.execute(
+        stmt.offset(skip)
+        .limit(limit)
+        .order_by(
+            case(
+                (models.TestRecord.creator == current_user.full_name, 0),
+                else_=1,
+            ),
+            models.TestRecord.created_at.desc(),
+        )
     )
-    result = await db.execute(stmt)
+    result = stmt.scalars().all()
+    result.insert(0, {"userid": current_user.id})
     return {
-        "items": result.scalars().all(),
+        "items": result,
         "total": total,
         "skip": skip,
         "limit": limit,

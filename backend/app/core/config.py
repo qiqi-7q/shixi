@@ -61,9 +61,9 @@ class Settings(BaseSettings):
     # SMTP 端口（465 是 SSL 安全端口）
     MAIL_PORT: int = 587
 
-    PLATFORM_URL: str = "https://test-data-open-platform.leapmotor.com"
-    PLATFORM_APP_ID: str = "57fb1e5c037a4e2ca0d8e20a20114173"
-    PLATFORM_APP_SECRET: str = (
+    LEAPMOTOR_CLOUD_URL: str = "https://test-data-open-platform.leapmotor.com"
+    LEAPMOTOR_CLOUD_APP_ID: str = "57fb1e5c037a4e2ca0d8e20a20114173"
+    LEAPMOTOR_CLOUD_APP_SECRET: str = (
         "czjVYxu1RqcD4TdGYmDDP7rcqay0zTKxUfLrfE/YUayCv0nkeHwD79a4FD3zqmIG"
     )
 

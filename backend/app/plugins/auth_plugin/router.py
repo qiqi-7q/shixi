@@ -92,6 +92,7 @@ async def login(
         "code": 200,
         "message": "登录成功",
         "data": {
+            "userid": user.id,
             "username": user.username,
             "full_name": user.full_name,
             "access_token": access_token,

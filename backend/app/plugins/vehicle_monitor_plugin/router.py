@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.vehicle_monitor_plugin import schemas, services
 
@@ -12,11 +12,9 @@ router = APIRouter()
 
 # 1. 创建单条记录
 @router.post("/create")
-async def create_monitor(
-    monitor: schemas.VehicleMonitorCreate, db: AsyncSession = Depends(get_db)
-):
+async def create_monitor(vin_code: str, db: AsyncSession = Depends(get_db)):
     result = await services.VehicleMonitorService.create_vehicle_monitor(
-        db=db, monitor=monitor
+        db=db, vin_code=vin_code
     )
     if result == "success":
         return {"message": "数据创建成功", "code": 200, "data": None}

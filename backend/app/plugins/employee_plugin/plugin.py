@@ -18,4 +18,3 @@ class EmployeePlugin(BasePlugin):
         async with async_engine.begin() as conn:
             await conn.run_sync(models.Base.metadata.create_all)
         app.include_router(router, prefix="/api/employee", tags=["员工管理"])
-        print("员工管理插件注册成功，接口已加载！")

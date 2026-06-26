@@ -18,4 +18,3 @@ class TestTaskPlugin(BasePlugin):
         async with async_engine.begin() as conn:
             await conn.run_sync(models.Base.metadata.create_all)
         app.include_router(router, prefix="/api/test_task", tags=["测试任务"])
-        print("测试任务插件注册成功，接口已加载！")
