@@ -122,7 +122,7 @@ class VehicleService:
         if vin_code:
             filters.append(models.Vehicle.vin_code.contains(vin_code))
         if model:
-            filters.append(models.Vehicle.model == model)
+            filters.append(models.Vehicle.model.icontains(model))
         if test_status:
             filters.append(models.Vehicle.test_status == test_status)
 
