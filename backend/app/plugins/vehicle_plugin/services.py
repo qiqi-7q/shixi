@@ -206,11 +206,69 @@ class VehicleService:
         db: AsyncSession, vehicle_id: int, vehicle_update: schemas.VehicleUpdate
     ) -> str:
         db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
-        if not db_vehicle:
-            return "车辆信息不存在"
+        if isinstance(db_vehicle, str):
+            return db_vehicle
+
         update_data = vehicle_update.model_dump(exclude_unset=True)
+        new_status = update_data.pop("vehicle_status", None)
+
+        # 如果改为 BORROWED：必须填写借用信息，自动创建借用记录
+        if new_status == models.VehicleStatus.BORROWED:
+            borrower = update_data.pop("borrower", None)
+            borrow_time = update_data.pop("borrow_time", None)
+            driver_name = update_data.pop("driver_name", None)
+            driver_work = update_data.pop("driver_work", None)
+            driver_performance = update_data.pop("driver_performance", None)
+            record_creator = update_data.pop("record_creator", None)
+
+            if not borrower:
+                return "改为已借出状态时，借用人不能为空"
+            if not borrow_time:
+                return "改为已借出状态时，借用时间不能为空"
+
+            if borrow_time < date.today():
+                return "借用时间必须是今天及之后的日期"
+
+            # 创建借用记录
+            borrow_record = models.BorrowRecord(
+                vehicle_id=db_vehicle.id,
+                model=db_vehicle.model,
+                vehicle_code=db_vehicle.vehicle_code,
+                vin_code=db_vehicle.vin_code,
+                borrower=borrower,
+                borrow_time=borrow_time,
+                driver_name=driver_name,
+                driver_work=driver_work,
+                driver_performance=driver_performance,
+                record_creator=record_creator,
+                borrow_status="borrowing" if borrow_time == date.today() else "reserved",
+            )
+            db.add(borrow_record)
+            db_vehicle.vehicle_status = models.VehicleStatus.BORROWED
+
+        # 如果从 BORROWED 改为 AVAILABLE：自动归还当前活跃借用记录
+        elif (
+            new_status == models.VehicleStatus.AVAILABLE
+            and db_vehicle.vehicle_status == models.VehicleStatus.BORROWED
+        ):
+            stmt = select(models.BorrowRecord).where(
+                models.BorrowRecord.vehicle_id == vehicle_id,
+                models.BorrowRecord.borrow_status.in_(["borrowing", "active"]),
+            )
+            result = await db.execute(stmt)
+            active_borrow = result.scalars().first()
+            if active_borrow:
+                active_borrow.borrow_status = "returned"
+            db_vehicle.vehicle_status = models.VehicleStatus.AVAILABLE
+
+        # 其他状态（MAINTENANCE / RESERVED）直接更新
+        elif new_status is not None:
+            db_vehicle.vehicle_status = new_status
+
+        # 更新其他字段
         for field, value in update_data.items():
             setattr(db_vehicle, field, value)
+
         await db.commit()
         await db.refresh(db_vehicle)
         return "success"
@@ -585,6 +643,10 @@ class BorrowService:
             return vehicle
         if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
             return "车辆正在维护，无法借用"
+        if vehicle.vehicle_status == models.VehicleStatus.RESERVED:
+            return "车辆已被预定，无法借用"
+        if vehicle.vehicle_status == models.VehicleStatus.BORROWED:
+            return "车辆已被借出，无法重复借用"
         # 事务
         try:
             # 更新车辆状态
