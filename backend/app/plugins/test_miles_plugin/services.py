@@ -118,9 +118,9 @@ async def get_version_mileage(
     )
 
     if project:
-        stmt = stmt.where(models.TestMiles.project == project)
+        stmt = stmt.where(models.TestMiles.project.icontains(project))
     if test_version:
-        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+        stmt = stmt.where(models.TestMiles.test_version.icontains(test_version))
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
@@ -157,9 +157,9 @@ async def get_daily_mileage(
     )
 
     if project:
-        stmt = stmt.where(models.TestMiles.project == project)
+        stmt = stmt.where(models.TestMiles.project.icontains(project))
     if test_version:
-        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+        stmt = stmt.where(models.TestMiles.test_version.icontains(test_version))
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
@@ -193,9 +193,9 @@ async def get_function_mileage(
     )
 
     if project:
-        stmt = stmt.where(models.TestMiles.project == project)
+        stmt = stmt.where(models.TestMiles.project.icontains(project))
     if test_version:
-        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+        stmt = stmt.where(models.TestMiles.test_version.icontains(test_version))
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
@@ -273,9 +273,9 @@ async def get_mileage_overview(
     )
 
     if project:
-        stmt = stmt.where(models.TestMiles.project == project)
+        stmt = stmt.where(models.TestMiles.project.icontains(project))
     if test_version:
-        stmt = stmt.where(models.TestMiles.test_version.like(f"%{test_version}%"))
+        stmt = stmt.where(models.TestMiles.test_version.icontains(test_version))
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:

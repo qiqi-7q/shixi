@@ -13,25 +13,31 @@ async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
     return db_employee
 
 
-async def get_employees(db: AsyncSession, skip: int = 0, limit: int = 100, name: str = None, module_name: str = None):
+async def get_employees(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    name: str = None,
+    module_name: str = None,
+):
     stmt = select(models.Employee)
     if name:
-        stmt = stmt.where(models.Employee.name.like(f"%{name}%"))
+        stmt = stmt.where(models.Employee.name.icontains(name))
     if module_name:
-        stmt = stmt.where(models.Employee.module_name.like(f"%{module_name}%"))
-    
+        stmt = stmt.where(models.Employee.module_name.icontains(module_name))
+
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
-    
+
     stmt = stmt.offset(skip).limit(limit).order_by(models.Employee.id.desc())
     result = await db.execute(stmt)
-    
+
     return {
         "items": result.scalars().all(),
         "total": total,
         "skip": skip,
-        "limit": limit
+        "limit": limit,
     }
 
 
@@ -42,7 +48,9 @@ async def get_employee(db: AsyncSession, employee_id: int):
     return item
 
 
-async def update_employee(db: AsyncSession, employee_id: int, data: schemas.EmployeeUpdate):
+async def update_employee(
+    db: AsyncSession, employee_id: int, data: schemas.EmployeeUpdate
+):
     # Literal 类型会在 Pydantic 层自动验证，此处无需额外检查
     stmt = select(models.Employee).where(models.Employee.id == employee_id)
     result = await db.execute(stmt)

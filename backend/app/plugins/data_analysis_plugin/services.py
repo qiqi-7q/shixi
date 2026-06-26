@@ -357,14 +357,18 @@ class DataAnalysis:
             return "无测试数据"
 
         # 查询该版本下的所有VIN码（从测试记录表获取，不区分车型）
-        test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
-            TestRecord.project == project,
-            TestRecord.software_version == version,
-            TestRecord.function_mode == funcMode,
+        test_record_vin_stmt = (
+            select(TestRecord.vin_code)
+            .distinct()
+            .where(
+                TestRecord.project == project,
+                TestRecord.software_version == version,
+                TestRecord.function_mode == funcMode,
+            )
         )
         test_record_vin_result = await db.execute(test_record_vin_stmt)
         vehicle_vins = [row[0] for row in test_record_vin_result.all()]
-        
+
         if not vehicle_vins:
             return "该版本暂无车辆数据"
 
@@ -742,9 +746,9 @@ class DataAnalysis:
             KpiMain.is_del == False,
         ]
         if project:
-            query_cons.append(KpiMain.project == project)
+            query_cons.append(KpiMain.project.icontains(project))
         if carModel:
-            query_cons.append(KpiMain.carModel == carModel)
+            query_cons.append(KpiMain.carModel.icontains(carModel))
         if version:
             query_cons.append(KpiMain.version == version)
         if funcMode:
@@ -883,10 +887,14 @@ class DataAnalysis:
             test_records = list(test_rec.scalars().all())
 
             # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
-            test_record_vin_stmt = select(TestRecord.vin_code).distinct().where(
-                TestRecord.project == project,
-                TestRecord.software_version == version,
-                TestRecord.function_mode == funcMode,
+            test_record_vin_stmt = (
+                select(TestRecord.vin_code)
+                .distinct()
+                .where(
+                    TestRecord.project == project,
+                    TestRecord.software_version == version,
+                    TestRecord.function_mode == funcMode,
+                )
             )
             test_record_vin_result = await db.execute(test_record_vin_stmt)
             vehicle_vins = [row[0] for row in test_record_vin_result.all()]
@@ -915,7 +923,9 @@ class DataAnalysis:
             recog_rate = recog_rate / 100.0
 
             # 计算【可靠性】模块（不变）
-            exit_r, exit_w = DataAnalysis.calc_linear_kpi(kpi_stat["EXIT_ratio"], EXIT_CFG)
+            exit_r, exit_w = DataAnalysis.calc_linear_kpi(
+                kpi_stat["EXIT_ratio"], EXIT_CFG
+            )
             downgrade_r, downgrade_w = DataAnalysis.calc_linear_kpi(
                 kpi_stat["DOWNGRADE_ratio"], DOWNGRADE_CFG
             )
@@ -967,14 +977,18 @@ class DataAnalysis:
             split_r, split_w = DataAnalysis.calc_linear_kpi(
                 diverge_converge_rate, DIVERGE_CONVERGE_CFG
             )
-            special_r, special_w = DataAnalysis.calc_linear_kpi(special_rate, SPECIAL_CFG)
+            special_r, special_w = DataAnalysis.calc_linear_kpi(
+                special_rate, SPECIAL_CFG
+            )
             recog_r, recog_w = DataAnalysis.calc_linear_kpi(recog_rate, RECOG_CFG)
             dropped_r, dropped_w = DataAnalysis.calc_dropped_kpi(kpi_stat["DROPPED"])
             hm_r, hm_w = DataAnalysis.calc_human_machine_kpi(
                 kpi_stat["H_M_C"], kpi_stat["H_M_U"]
             )
             mo_r, mo_w = DataAnalysis.calc_micro_oa_kpi(
-                kpi_stat["MICRO_OA_FAIL"], kpi_stat["MICRO_OA_B"], kpi_stat["MICRO_OA_R"]
+                kpi_stat["MICRO_OA_FAIL"],
+                kpi_stat["MICRO_OA_B"],
+                kpi_stat["MICRO_OA_R"],
             )
             usability_s = (
                 cl_w
@@ -1038,7 +1052,8 @@ class DataAnalysis:
                 "exception": kpi_stat["EXCEPTION_ratio"],
                 "collision": kpi_stat["COLLISION_ratio"],
                 "crash": kpi_stat["CRASH_ratio"],
-                "red_green": kpi_stat["RED_GREEN_SEVERE"] + kpi_stat["RED_GREEN_GENERAL"],
+                "red_green": kpi_stat["RED_GREEN_SEVERE"]
+                + kpi_stat["RED_GREEN_GENERAL"],
                 "over_low": kpi_stat["OVER_LOW_ratio"],
                 "lateral": kpi_stat["LATERAL_ratio"],
                 "vertical": kpi_stat["VERTICAL_ratio"],
@@ -1050,11 +1065,17 @@ class DataAnalysis:
                 "dropped_s": kpi_stat["DROPPED_ratio"],
                 "recog_s": recog_rate,
                 "hm_s": kpi_stat["H_M_C"] + kpi_stat["H_M_U"],
-                "mo_s": kpi_stat["MICRO_OA_FAIL"] + kpi_stat["MICRO_OA_B"] + kpi_stat["MICRO_OA_R"],
+                "mo_s": kpi_stat["MICRO_OA_FAIL"]
+                + kpi_stat["MICRO_OA_B"]
+                + kpi_stat["MICRO_OA_R"],
             }
 
             for item in kpi_items:
-                kpi_type = item.KPIType.lower() if isinstance(item.KPIType, str) else str(item.KPIType).lower()
+                kpi_type = (
+                    item.KPIType.lower()
+                    if isinstance(item.KPIType, str)
+                    else str(item.KPIType).lower()
+                )
                 if kpi_type in kpi_score_map:
                     item.RawScore = kpi_score_map[kpi_type][0]
                     item.KPIScore = kpi_score_map[kpi_type][1]
@@ -1130,7 +1151,6 @@ class DataAnalysis:
         """获取版本得分统计（可按项目名称筛选）"""
         stmt = select(
             KpiMain.project,
-            KpiMain.carModel,
             KpiMain.version,
             KpiMain.funcMode,
             func.avg(KpiMain.totalScore).label("avg_score"),
@@ -1139,21 +1159,20 @@ class DataAnalysis:
         ).filter(KpiMain.is_del == False)
 
         if project:
-            stmt = stmt.filter(KpiMain.project == project)  # 精确匹配项目名称
+            stmt = stmt.filter(KpiMain.project == project)
         if carModel:
             stmt = stmt.filter(KpiMain.carModel == carModel)
         if funcMode:
             stmt = stmt.filter(KpiMain.funcMode == funcMode)
 
         stmt = stmt.group_by(
-            KpiMain.project, KpiMain.carModel, KpiMain.version, KpiMain.funcMode
-        ).order_by(KpiMain.project, KpiMain.carModel, KpiMain.version)
+            KpiMain.project, KpiMain.version, KpiMain.funcMode
+        ).order_by(KpiMain.project, KpiMain.version)
 
         result = await db.execute(stmt)
         return [
             {
                 "project": row.project,
-                "carModel": row.carModel,
                 "version": row.version,
                 "funcMode": row.funcMode,
                 "avg_score": round(float(row.avg_score or 0), 2),

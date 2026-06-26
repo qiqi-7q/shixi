@@ -465,7 +465,7 @@ class BorrowService:
         if borrow_status:
             stmt = stmt.where(models.BorrowRecord.borrow_status == borrow_status)
         if model:
-            stmt = stmt.where(models.BorrowRecord.model == model)
+            stmt = stmt.where(models.BorrowRecord.model.icontains(model))
         if vin_code:
             stmt = stmt.where(models.BorrowRecord.vin_code.contains(vin_code))
         if driver_name:
@@ -552,19 +552,27 @@ class BorrowService:
         current_date = date.today()
         # 查询BorrowRecord数据库中，vehicle_id=borrow.vehicle_id,借用状态是borrowing或reserved，但除了当前记录外的借用记录，
         existing_borrows = await db.execute(
-            select(models.BorrowRecord)
+            select(models.BorrowRecord.borrower, models.BorrowRecord.borrow_time)
             .where(
                 models.BorrowRecord.vehicle_id == vehicle_id,
-                models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
                 models.BorrowRecord.borrow_time >= current_date,
+                models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
                 models.BorrowRecord.id != record_id,
             )
             .order_by(models.BorrowRecord.borrow_time.desc())
         )
+
         # 提取记录的borrower、borrow_time返回列表
+        # existing_borrows = [
+        #     {"borrower": record.borrower, "borrow_time": record.borrow_time}
+        #     for record in existing_borrows.scalars().all()
+        # ]
         existing_borrows = [
-            {"borrower": record.borrower, "borrow_time": record.borrow_time}
-            for record in existing_borrows.scalars().all()
+            {
+                "borrower": record._mapping["borrower"],
+                "borrow_time": record._mapping["borrow_time"],
+            }
+            for record in existing_borrows.all()
         ]
         if not existing_borrows:
             return []
@@ -1099,7 +1107,7 @@ class BorrowStatsService:
 
         return {
             "total": total,
-            "active": active,
+            "borrowing": active,
             "returned": returned,
             "cancelled": cancelled,
             "reserved": reserved,
