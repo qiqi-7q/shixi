@@ -203,7 +203,7 @@ class VehicleService:
 
     @staticmethod
     async def update_vehicle(
-            db: AsyncSession, vehicle_id: int, vehicle_update: schemas.VehicleUpdate
+        db: AsyncSession, vehicle_id: int, vehicle_update: schemas.VehicleUpdate
     ) -> str:
         db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
         if not db_vehicle:
