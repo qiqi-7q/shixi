@@ -1,10 +1,11 @@
 from datetime import date
 from typing import Optional
-from app.utils.leapmotor_cloud_data import (
-    get_vehicle_status,
-    get_fire_states,
-    get_charge_states,
-)
+
+# from app.utils.leapmotor_cloud_data import (
+#     get_vehicle_status,
+#     get_fire_states,
+#     get_charge_states,
+# )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
@@ -16,18 +17,18 @@ class VehicleMonitorService:
     # 创建
     @staticmethod
     async def create_vehicle_monitor(db: AsyncSession, vin_code: str):
-        vehicle_status = get_vehicle_status(VIN=vin_code)
+        # vehicle_status = get_vehicle_status(VIN=vin_code)
         # get_fire_states(CAR_ID, BEGIN_TIME, END_TIME)
         # get_charge_states(CAR_ID, BEGIN_TIME, END_TIME)
 
-        try:
-            db_monitor = models.VehicleMonitor(**monitor.model_dump())
-            db.add(db_monitor)
-            await db.commit()
-        except Exception as e:
-            await db.rollback()
-            return f"创建车辆监测数据失败: {str(e)}"
-        await db.refresh(db_monitor)
+        # try:
+        #     db_monitor = models.VehicleMonitor(**monitor.model_dump())
+        #     db.add(db_monitor)
+        #     await db.commit()
+        # except Exception as e:
+        #     await db.rollback()
+        #     return f"创建车辆监测数据失败: {str(e)}"
+        # await db.refresh(db_monitor)
         return "success"
 
     # 获取列表
