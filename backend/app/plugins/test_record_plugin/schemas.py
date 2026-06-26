@@ -30,6 +30,7 @@ class TestRecordBase(BaseModel):
     analyze_user: Optional[str] = None
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
+    creator: Optional[str] = None
     remarks: Optional[str] = None
 
 
@@ -56,6 +57,7 @@ class TestRecordUpdate(BaseModel):
     wetrack_link: Optional[str] = None
     analyze_result: Optional[str] = None
     analyze_user: Optional[str] = None
+    creator: Optional[str] = None
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None
@@ -74,6 +76,7 @@ class TestRecord(TestRecordBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 # 获取TestRecord模型所有的字段
 TEST_RECORD_WHITELIST = set(TestRecord.model_fields.keys())

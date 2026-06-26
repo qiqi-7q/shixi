@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.test_route_plugin import models, schemas
 
-
 class TestRouteService:
 
     # 创建

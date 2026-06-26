@@ -52,6 +52,10 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "project_plan", "app.plugins.project_plan_plugin.plugin"
     )
+    await plugin_manager.register_plugin(
+        "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
+    )
+
     yield
     # 关闭时执行
     stop_scheduler()
@@ -89,7 +93,7 @@ plugin_manager.init_app(app)
 # 文件夹不存在则自动创建
 settings.STATIC_DIR.mkdir(exist_ok=True, parents=True)
 settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
-settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
+# settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # ========== 挂载静态文件 ==========
 # 访问地址：http://127.0.0.1:8000/static/xxx.png
@@ -111,5 +115,5 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="10.192.183.110", port=8000, reload=True)
-    # uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="10.192.183.125", port=8000, reload=True)
+# uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)

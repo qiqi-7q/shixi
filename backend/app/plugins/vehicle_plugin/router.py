@@ -153,7 +153,7 @@ async def get_vehicles(
                         "code": 400,
                     }
                 # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
-                if field_name in TIME_FIELDS: 
+                if field_name in TIME_FIELDS:
 
                     start_value = field_value[0]
                     end_value = field_value[1]
@@ -171,7 +171,6 @@ async def get_vehicles(
                     # 如果使用的是 advanced_value，也需要更新
                     if "advanced_value" in cond:
                         cond["advanced_value"] = [start_value, end_value]
-            
 
             if field_name not in schemas.VEHICLE_WHITELIST:
                 return {
@@ -354,7 +353,7 @@ async def get_borrow_records_simple(
     vin_code: Optional[str] = None,
     borrow_status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    driver_name: Optional[str] = None
+    driver_name: Optional[str] = None,
 ):
     """获取借用记录列表"""
     records = await services.BorrowService.get_borrow_records_simple(
@@ -410,10 +409,10 @@ async def get_borrow_records(
                         "data": None,
                     }
                 # 时间字段特殊处理：将结束日期调整为当天的 23:59:59
-                if field_name in TIME_FIELDS: 
+                if field_name in TIME_FIELDS:
 
-                    start_value = field_value[0]
-                    end_value = field_value[1]
+                    start_value = cond["advanced_value"][0]
+                    end_value = cond["advanced_value"][1]
 
                     # 处理开始时间：如果是纯日期，添加 00:00:00
                     if isinstance(start_value, str) and len(start_value) == 10:

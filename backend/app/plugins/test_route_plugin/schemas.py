@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
-
+from sqlalchemy import Enum
+# from app.plugins.test_route_plugin.models import RouteFeature
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -18,7 +19,7 @@ class TestRouteBase(BaseModel):
     # 可选字段
     location: Optional[str] = Field(None, max_length=100, description="地点")
     route_desc: Optional[str] = Field(None, description="路线描述")
-    route_feature: Optional[str] = Field(None, max_length=200, description="路线特征")
+    route_feature: Optional[str] = Field(None, description="路线特征")
     route_link: Optional[str] = Field(None, max_length=500, description="路线链接")
     remark: Optional[str] = Field(None, description="备注")
 
@@ -40,7 +41,7 @@ class TestRouteUpdate(BaseModel):
     test_func: Optional[str] = Field(None, max_length=100, description="测试功能")
     diff: Optional[Decimal] = Field(None, ge=0, le=100, description="难度系数（0-100）")
     route_desc: Optional[str] = Field(None, description="路线描述")
-    route_feature: Optional[str] = Field(None, max_length=200, description="路线特征")
+    route_feature: Optional[str] = Field(None, description="路线特征")
     route_link: Optional[str] = Field(None, max_length=500, description="路线链接")
     remark: Optional[str] = Field(None, description="备注")
     creator: Optional[str] = Field(None, max_length=50, description="创建人")

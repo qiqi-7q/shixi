@@ -31,10 +31,10 @@ async def get_test_miles_list(db: AsyncSession, skip: int = 0, limit: int = 100,
         stmt = stmt.where(models.TestMiles.test_function == test_function )
     
     if test_start_date:
-        stmt = stmt.where(models.TestMiles.test_time >= test_start_date)
+        stmt = stmt.where(models.TestMiles.test_start_time >= test_start_date)
     
     if test_end_date:
-        stmt = stmt.where(models.TestMiles.test_time <= test_end_date)
+        stmt = stmt.where(models.TestMiles.test_end_time <= test_end_date)
     
     total_stmt = select(func.count()).select_from(stmt.subquery())
     total_result = await db.execute(total_stmt)
@@ -104,9 +104,9 @@ async def get_version_mileage(db: AsyncSession, project: str = None, test_versio
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
-        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+        stmt = stmt.where(models.TestMiles.test_start_time >= start_date)
     if end_date:
-        stmt = stmt.where(models.TestMiles.test_time <= end_date)
+        stmt = stmt.where(models.TestMiles.test_end_time <= end_date)
     
     stmt = stmt.group_by(models.TestMiles.test_version).order_by(func.sum(models.TestMiles.mileage).desc())
     
@@ -117,7 +117,7 @@ async def get_version_mileage(db: AsyncSession, project: str = None, test_versio
 async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: str = None, project: str = None, test_version: str = None, test_function: str = None):
     """获取每日里程统计"""
     stmt = select(
-        func.date(models.TestMiles.test_time).label('date'),
+        func.date(models.TestMiles.test_start_time).label('date'),
         func.sum(models.TestMiles.mileage).label('total_mileage')
     )
     
@@ -128,11 +128,11 @@ async def get_daily_mileage(db: AsyncSession, start_date: str = None, end_date: 
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
-        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+        stmt = stmt.where(models.TestMiles.test_start_time >= start_date)
     if end_date:
-        stmt = stmt.where(models.TestMiles.test_time <= end_date)
+        stmt = stmt.where(models.TestMiles.test_end_time <= end_date)
     
-    stmt = stmt.group_by(func.date(models.TestMiles.test_time)).order_by(func.date(models.TestMiles.test_time))
+    stmt = stmt.group_by(func.date(models.TestMiles.test_start_time)).order_by(func.date(models.TestMiles.test_start_time))
     
     result = await db.execute(stmt)
     return [{"date": str(row.date), "total_mileage": float(row.total_mileage or 0)} for row in result.all()]
@@ -152,9 +152,9 @@ async def get_function_mileage(db: AsyncSession, project: str = None, test_versi
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
-        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+        stmt = stmt.where(models.TestMiles.test_start_time >= start_date)
     if end_date:
-        stmt = stmt.where(models.TestMiles.test_time <= end_date)
+        stmt = stmt.where(models.TestMiles.test_end_time <= end_date)
     
     stmt = stmt.group_by(models.TestMiles.test_function).order_by(func.sum(models.TestMiles.mileage).desc())
     
@@ -194,9 +194,9 @@ async def get_mileage_overview(db: AsyncSession, start_date: str = None, end_dat
     if test_function:
         stmt = stmt.where(models.TestMiles.test_function == test_function)
     if start_date:
-        stmt = stmt.where(models.TestMiles.test_time >= start_date)
+        stmt = stmt.where(models.TestMiles.test_start_time >= start_date)
     if end_date:
-        stmt = stmt.where(models.TestMiles.test_time <= end_date)
+        stmt = stmt.where(models.TestMiles.test_end_time <= end_date)
     
     result = await db.execute(stmt)
     row = result.one()

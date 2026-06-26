@@ -1,4 +1,3 @@
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.plugins.test_record_plugin.test_record_tasks import refresh_data_links_job
@@ -48,15 +47,15 @@ scheduler.add_job(
 # hours = (2,)
 
 
-# 添加定时任务：每2小时刷新一次数据链接
-scheduler.add_job(
-    func=refresh_data_links_job,
-    id="refresh_data_links",  # 任务ID，用于取消任务
-    name="定时刷新数据链接",  # 任务名称，用于日志记录
-    replace_existing=True,  # 如果存在相同ID的任务，则替换为新任务
-    trigger="interval",
-    hours=2,
-)
+# # 添加定时任务：每2小时刷新一次数据链接
+# scheduler.add_job(
+#     func=refresh_data_links_job,
+#     id="refresh_data_links",  # 任务ID，用于取消任务
+#     name="定时刷新数据链接",  # 任务名称，用于日志记录
+#     replace_existing=True,  # 如果存在相同ID的任务，则替换为新任务
+#     trigger="interval",
+#     hours=2,
+# )
 
 
 # 封装停止调度器函数
