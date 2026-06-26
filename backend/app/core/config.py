@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # JWT配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 * 60 * 60 * 24
 
     # 数据库连接池
     DB_POOL_SIZE: int = 10

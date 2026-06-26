@@ -48,6 +48,7 @@ def build_enum_lookup(enum_cls) -> Dict[str, str]:
         lookup[member.name.upper()] = member.value
         lookup[member.value.upper()] = member.value
     return lookup
+
 def is_empty_row(row_cells) -> bool:
     """
     判断一行是否为全空行

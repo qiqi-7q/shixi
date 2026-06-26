@@ -31,6 +31,7 @@ class TestRecordBase(BaseModel):
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     creator: Optional[str] = None
+    creator_id: Optional[int] = None
     remarks: Optional[str] = None
 
 
@@ -58,6 +59,7 @@ class TestRecordUpdate(BaseModel):
     analyze_result: Optional[str] = None
     analyze_user: Optional[str] = None
     creator: Optional[str] = None
+    creator_id: Optional[int] = None
     analyze_attach: Optional[str] = None
     software_version: Optional[str] = None
     remarks: Optional[str] = None

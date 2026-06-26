@@ -26,6 +26,7 @@ async def create_test_record(
     db: AsyncSession, record: schemas.TestRecordCreate, current_user: User
 ):
     record.creator = current_user.full_name
+    record.creator_id = current_user.id
     db_record = models.TestRecord(**record.model_dump())
     db.add(db_record)
     await db.commit()
@@ -115,7 +116,6 @@ async def get_test_records(
         )
     )
     result = stmt.scalars().all()
-    result.insert(0, {"userid": current_user.id})
     return {
         "items": result,
         "total": total,
@@ -185,6 +185,8 @@ CHINESE_FIELD_MAPPING = {
     "分析附件": "analyze_attach",
     "软件版本": "software_version",
     "备注": "remarks",
+    "创建人": "creator",
+    "创建人ID": "creator_id",
 }
 # -----------------------------------------------------------------------------
 
@@ -295,10 +297,10 @@ def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
                 if isinstance(value, str):
                     value = clean_string(value)
                 # 特殊处理：software_version 字段确保为字符串类型
-                if en_field == 'software_version' and value is not None:
+                if en_field == "software_version" and value is not None:
                     value = str(value)
                 # 特殊处理：problem_time 字段，转换各种日期格式
-                if en_field == 'problem_time' and value is not None:
+                if en_field == "problem_time" and value is not None:
                     value = convert_chinese_date(value)
                 transformed[en_field] = value
             # 其次查找英文表头（保持向后兼容）
@@ -308,15 +310,15 @@ def transform_chinese_headers(excel_records: List[dict]) -> List[dict]:
                 if isinstance(value, str):
                     value = clean_string(value)
                 # 特殊处理：software_version 字段确保为字符串类型
-                if en_field == 'software_version' and value is not None:
+                if en_field == "software_version" and value is not None:
                     value = str(value)
                 # 特殊处理：problem_time 字段，转换各种日期格式
-                if en_field == 'problem_time' and value is not None:
+                if en_field == "problem_time" and value is not None:
                     value = convert_chinese_date(value)
                 transformed[en_field] = value
         # 保留原始行号信息
-        if '_original_row_num' in record:
-            transformed['_original_row_num'] = record['_original_row_num']
+        if "_original_row_num" in record:
+            transformed["_original_row_num"] = record["_original_row_num"]
         transformed_records.append(transformed)
     return transformed_records
 
@@ -444,7 +446,9 @@ async def batch_import_records(file, db: AsyncSession):
         existing_keys: Set[Tuple] = set()
         for record in existing_records:
             # 把数据库里的记录也转成唯一键，和Excel里的对比
-            record_dict = {field: getattr(record, field) for field in REPEAT_CHECK_FIELDS}
+            record_dict = {
+                field: getattr(record, field) for field in REPEAT_CHECK_FIELDS
+            }
             existing_key = generate_unique_key(record_dict, REPEAT_CHECK_FIELDS)
             existing_keys.add(existing_key)
 
@@ -726,11 +730,27 @@ async def batch_export_records(
 
     # 定义Excel表头（中文表头，与导入时的表头一致）
     headers = [
-        "项目", "车型", "功能模式", "问题描述",
-        "评价维度", "KPI项", "问题场景", "问题分类",
-        "问题现象", "接管类型", "问题时间", "车辆VIN号",
-        "数据链接", "Wetrack链接", "分析结果", "分析人员",
-        "分析附件", "软件版本", "备注", "创建时间", "更新时间"
+        "项目",
+        "车型",
+        "功能模式",
+        "问题描述",
+        "评价维度",
+        "KPI项",
+        "问题场景",
+        "问题分类",
+        "问题现象",
+        "接管类型",
+        "问题时间",
+        "车辆VIN号",
+        "数据链接",
+        "Wetrack链接",
+        "分析结果",
+        "分析人员",
+        "分析附件",
+        "软件版本",
+        "备注",
+        "创建时间",
+        "更新时间",
     ]
 
     # 字段名映射：中文表头到英文字段名

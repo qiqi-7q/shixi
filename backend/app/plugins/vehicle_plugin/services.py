@@ -476,8 +476,11 @@ class BorrowService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        # 借用记录倒序排序
-        stmt = stmt.order_by(models.BorrowRecord.borrow_time.desc())
+        # 借用记录倒序排序，先按照借用时间，再按照创建时间
+        stmt = stmt.order_by(
+            models.BorrowRecord.borrow_time.desc(),
+            models.BorrowRecord.created_at.desc(),
+        )
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         return {
@@ -516,7 +519,10 @@ class BorrowService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        stmt = stmt.order_by(models.BorrowRecord.borrow_time.desc())
+        stmt = stmt.order_by(
+            models.BorrowRecord.borrow_time.desc(),
+            models.BorrowRecord.created_at.desc(),
+        )
         stmt = stmt.offset(skip).limit(limit)
         result = await db.execute(stmt)
         return {
