@@ -1,18 +1,19 @@
-from typing import List, Dict, Any
 from importlib import import_module
+from typing import Any, Dict, List
+
 from fastapi import FastAPI
 
 
 class PluginManager:
     def __init__(self):
         self.plugins: Dict[str, Any] = {}
-        self.app: FastAPI = None
+        self.app: FastAPI = None  # type: ignore
 
     def init_app(self, app: FastAPI):
         """初始化插件管理器"""
         self.app = app
 
-    def register_plugin(self, plugin_name: str, plugin_module: str):
+    async def register_plugin(self, plugin_name: str, plugin_module: str):
         """注册插件"""
         try:
             module = import_module(plugin_module)
@@ -29,8 +30,8 @@ class PluginManager:
             plugin_class = getattr(module, f"{plugin_name}Plugin")
             plugin_instance = plugin_class()
 
-            if hasattr(plugin_instance, 'register'):
-                plugin_instance.register(self.app)
+            if hasattr(plugin_instance, "register"):
+                await plugin_instance.register(self.app)
 
             self.plugins[plugin_name] = plugin_instance
             print(f"Plugin '{plugin_name}' registered successfully")

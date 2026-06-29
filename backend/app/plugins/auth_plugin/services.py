@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from jose import jwt
 from fastapi import HTTPException, status
 
@@ -32,9 +33,11 @@ class AuthService:
         return encoded_jwt
 
     @staticmethod
-    def authenticate_user(db: Session, username: str, password: str):
+    async def authenticate_user(db: AsyncSession, username: str, password: str):
         """验证用户登录"""
-        user = db.query(models.User).filter(models.User.username == username).first()
+        stmt = select(models.User).where(models.User.username == username)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
         if not user:
             return False
         if not AuthService.verify_password(password, user.hashed_password):
@@ -42,23 +45,27 @@ class AuthService:
         return user
 
     @staticmethod
-    def create_user(db: Session, user: schemas.UserCreate):
+    async def create_user(db: AsyncSession, user: schemas.UserCreate):
         """创建新用户"""
         # 检查用户名是否已存在
-        db_user = db.query(models.User).filter(models.User.username == user.username).first()
+        stmt = select(models.User).where(models.User.username == user.username)
+        result = await db.execute(stmt)
+        db_user = result.scalar_one_or_none()
         if db_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already registered"
+                detail="账号已存在"
             )
 
-        # 检查邮箱是否已存在
-        db_user = db.query(models.User).filter(models.User.email == user.email).first()
-        if db_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
+        # # 检查邮箱是否已存在
+        # stmt = select(models.User).where(models.User.email == user.email)
+        # result = await db.execute(stmt)
+        # db_user = result.scalar_one_or_none()
+        # if db_user:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_400_BAD_REQUEST,
+        #         detail="Email already registered"
+        #     )
 
         try:
             # 直接存储明文密码
@@ -66,40 +73,46 @@ class AuthService:
                 username=user.username,
                 email=user.email,
                 full_name=user.full_name,
-                hashed_password=AuthService.get_password_hash(user.password)  # 实际上存储的是明文
+                hashed_password=AuthService.get_password_hash(user.password)
             )
             db.add(db_user)
-            db.commit()
-            db.refresh(db_user)
+            await db.commit()
+            await db.refresh(db_user)
             return db_user
         except Exception as e:
-            db.rollback()
+            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to create user: {str(e)}"
             )
 
     @staticmethod
-    def get_user(db: Session, user_id: int):
+    async def get_user(db: AsyncSession, user_id: int):
         """根据ID获取用户"""
-        return db.query(models.User).filter(models.User.id == user_id).first()
+        stmt = select(models.User).where(models.User.id == user_id)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     @staticmethod
-    def get_user_by_username(db: Session, username: str):
+    async def get_user_by_username(db: AsyncSession, username: str):
         """根据用户名获取用户"""
-        return db.query(models.User).filter(models.User.username == username).first()
+        stmt = select(models.User).where(models.User.username == username)
+        result = await db.execute(stmt)
+        return result.scalar_one_or_none()
 
     @staticmethod
-    def update_password(db: Session, user_id: int, new_password: str):
+    async def update_password(db: AsyncSession, user_id: int, new_password: str):
         """更新用户密码"""
-        user = AuthService.get_user(db, user_id)
+        stmt = select(models.User).where(models.User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
 
-        user.hashed_password = new_password  # 直接存储明文
-        db.commit()
-        db.refresh(user)
+        user.hashed_password = new_password
+        await db.commit()
+        await db.refresh(user)
         return user

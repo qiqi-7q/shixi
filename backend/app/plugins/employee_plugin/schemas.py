@@ -1,15 +1,15 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 
 
 class EmployeeBase(BaseModel):
     name: str
-    contact_engineer: Optional[str] = None
-    third_party_company: Optional[str] = None
-    contact_info: Optional[str] = None
-    remarks: Optional[str] = None
-
+    # 新增字段
+    module_name: Optional[str] = None
+    module_manager: Optional[str] = None
+    job_type: Optional[Literal["司机", "外协"]] = None
+    task: Optional[str] = None
 
 class EmployeeCreate(EmployeeBase):
     pass
@@ -17,11 +17,11 @@ class EmployeeCreate(EmployeeBase):
 
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
-    contact_engineer: Optional[str] = None
-    third_party_company: Optional[str] = None
-    contact_info: Optional[str] = None
-    remarks: Optional[str] = None
-
+    module_name: Optional[str] = None
+    module_manager: Optional[str] = None
+    job_type: Optional[Literal["司机", "外协"]] = None
+    task: Optional[str] = None
+    
 
 class Employee(EmployeeBase):
     id: int

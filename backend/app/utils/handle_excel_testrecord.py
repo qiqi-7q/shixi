@@ -1,6 +1,53 @@
 from openpyxl import load_workbook
-import sys
+from datetime import datetime, date, time
+from typing import Tuple, Dict, Any, Type
+from enum import Enum
+from io import BytesIO
 
+def handle_excel_from_bytes(data: bytes):
+    """从内存字节流读取Excel，无需落盘"""
+    try:
+        wb = load_workbook(BytesIO(data))
+        if wb.sheetnames:
+            ws = wb[wb.sheetnames[0]]
+        else:
+            raise Exception("Excel文件中没有工作表")
+    except Exception as e:
+        raise Exception(f"文件读取失败：{e}")
+    dict_list, headers = handle_data(ws)
+    return dict_list, headers
+
+
+# ---------------------- 核心工具函数：生成数据的唯一标识键 ----------------------
+def generate_unique_key(data_dict: dict, REPEAT_CHECK_FIELDS: list) -> Tuple:
+    """
+    根据配置的重复判定字段，生成数据的唯一标识元组
+    元组可哈希，可用于集合去重、数据库查询
+    """
+    key_values = []
+    for field in REPEAT_CHECK_FIELDS:
+        # 处理空值，确保None和空字符串的一致性
+        value = data_dict.get(field)
+        # 处理datetime对象，转换为统一的字符串格式
+        if isinstance(value, (datetime, date, time)):
+            value = value.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(value, str):
+            value = value.strip()
+        key_values.append(value)
+    # 转成元组（不可变，可哈希）
+    return tuple(key_values)
+
+
+# ============================================================
+# 预构建枚举值查找表（模块加载时一次性完成，避免每次请求重复遍历 __members__）
+# 将 Excel 中可能出现的值（英文名 / 中文值）统一映射到数据库存储的中文值
+# ============================================================
+def build_enum_lookup(enum_cls) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for member in enum_cls:
+        lookup[member.name.upper()] = member.value
+        lookup[member.value.upper()] = member.value
+    return lookup
 
 def is_empty_row(row_cells) -> bool:
     """
@@ -21,16 +68,7 @@ def is_empty_row(row_cells) -> bool:
     return True
 
 
-# 读取Excel文件，转为字典列表
-def excel_to_dict_list(file_path):
-    # 加载Excel文件
-    try:
-        wb = load_workbook(file_path)
-        ws = wb['Sheet1']  # 默认读取Sheet1，可根据需要修改
-    except Exception as e:
-        print(f"❌ 文件读取失败：{e}")
-
-
+def handle_data(ws):
     # 处理表头：解决空表头、重复表头问题，避免字典key异常
     raw_headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
     headers = []
@@ -38,11 +76,11 @@ def excel_to_dict_list(file_path):
     for idx, h in enumerate(raw_headers):
         # 空表头自动重命名
         if h is None:
-            h = f'unknown_column_{idx+1}'
+            h = f"unknown_column_{idx+1}"
         # 重复表头自动加序号
         if h in header_count:
             header_count[h] += 1
-            h = f'{h}_{header_count[h]}'
+            h = f"{h}_{header_count[h]}"
         else:
             header_count[h] = 0
         headers.append(h)
@@ -72,6 +110,30 @@ def excel_to_dict_list(file_path):
     return dict_list, headers
 
 
+# 读取Excel文件，转为字典列表
+def excel_to_dict_list(file_path):
+    # 加载Excel文件
+    try:
+        wb = load_workbook(file_path)
+        # 优先读取第一个工作表（兼容不同的sheet名称）
+        if wb.sheetnames:
+            ws = wb[wb.sheetnames[0]]
+        else:
+            return "❌ Excel文件中没有工作表"
+    except Exception as e:
+        return f"❌ 文件读取失败：{e}"
+    return ws
+
+
+def handle_excel_some(file_path):
+    ws = excel_to_dict_list(file_path)
+    # 检查是否返回了错误信息
+    if isinstance(ws, str):
+        raise Exception(ws)
+    dict_list, headers = handle_data(ws)
+
+    return dict_list, headers
+
 
 # # 4. 主程序执行
 # if __name__ == "__main__":
@@ -90,4 +152,3 @@ def excel_to_dict_list(file_path):
 #         print(f"\n第{i+1}条数据：")
 #         for key, value in item.items():
 #             print(f"  {key}: {value}")
-

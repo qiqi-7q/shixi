@@ -1,26 +1,66 @@
+from contextlib import asynccontextmanager
+
+import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
-from app.core.database import engine, Base
-from app.core.redis_client import redis_client
+from starlette.staticfiles import StaticFiles
+
+from app.core.config import settings
 from app.core.plugin_manager import plugin_manager
+from app.core.redis_client import redisserve
+from app.core.scheduler import scheduler, stop_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时执行
     print("Starting up...")
-    # 测试Redis连接
-    try:
-        redis_client.ping()
-        print("Redis connected successfully")
-    except Exception as e:
-        print(f"Redis connection failed: {e}")
+    # 测试 Redis 连接
+    redis_result = await redisserve.conn_ping()
+    print(redis_result)
+
+    # 2. 启动定时调度器（配置中jobs已自动注册，只需start）
+    if not scheduler.running:
+        scheduler.start()
+        print("APScheduler 调度器启动成功，所有定时任务加载完成")
+
+    # 注册插件
+    await plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
+    await plugin_manager.register_plugin("vehicle", "app.plugins.vehicle_plugin.plugin")
+    await plugin_manager.register_plugin(
+        "test_record", "app.plugins.test_record_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "test_route", "app.plugins.test_route_plugin.plugin"
+    )
+    # 新增的三个插件注册
+    await plugin_manager.register_plugin(
+        "employee", "app.plugins.employee_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "test_miles", "app.plugins.test_miles_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "test_task", "app.plugins.test_task_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "data_analysis", "app.plugins.data_analysis_plugin.plugin"
+    )
+    await plugin_manager.register_plugin(
+        "project_plan", "app.plugins.project_plan_plugin.plugin"
+    )
+    # await plugin_manager.register_plugin(
+    #     "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
+    # )
 
     yield
     # 关闭时执行
+    stop_scheduler()
     print("Shutting down...")
+    await redisserve.close_conn()
 
 
 app = FastAPI(
@@ -29,6 +69,7 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
 
 # 配置CORS
 app.add_middleware(
@@ -42,24 +83,25 @@ app.add_middleware(
 # 初始化插件管理器
 plugin_manager.init_app(app)
 
-# 注册插件
-plugin_manager.register_plugin("auth", "app.plugins.auth_plugin.plugin")
-print("auth_plugin注册成功")
-plugin_manager.register_plugin("vehicle", "app.plugins.vehicle_plugin.plugin")
-print("vehicle_plugin注册成功")
-plugin_manager.register_plugin("test_record", "app.plugins.test_record_plugin.plugin")
-print("record_plugin注册成功")
-plugin_manager.register_plugin("driver_monitor", "app.plugins.driver_monitor_plugin.plugin")
-print("driver_monitor_plugin注册成功")
-plugin_manager.register_plugin("test_route", "app.plugins.test_route_plugin.plugin")
-print("test_route_plugin注册成功")
-# plugin_manager.register_plugin("data_analysis", "app.plugins.data_analysis_plugin.plugin")
-# print("data_analysis_plugin注册成功")
+# # 项目根目录（app文件夹）
+# BASE_DIR = Path(__file__).parent
+# # 静态文件目录
+# STATIC_DIR = BASE_DIR / "static"
+# # 上传文件目录
+# UPLOAD_DIR = BASE_DIR / "uploads"
 
+# 文件夹不存在则自动创建
+settings.STATIC_DIR.mkdir(exist_ok=True, parents=True)
+settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
+# settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
+
+# ========== 挂载静态文件 ==========
+# 访问地址：http://127.0.0.1:8000/static/xxx.png
+app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="static")
 
 
 @app.get("/")
-def root():
+async def root():
     return {
         "message": "测试管理平台API",
         "version": "1.0.0",
@@ -68,17 +110,5 @@ def root():
 
 
 @app.get("/health")
-def health_check():
-    health_status = {"status": "healthy", "redis": False}
-
-    try:
-        redis_client.ping()
-        health_status["redis"] = True
-    except:
-        pass
-
-    return health_status
-
-if __name__ == "__main__":
-    uvicorn.run("app.main:app",host='127.0.0.1',port=8000,reload=True)
-
+async def health_check():
+    return {"status": "healthy", "redis": await redisserve.conn_ping()}

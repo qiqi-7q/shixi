@@ -1,50 +1,79 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 from fastapi import HTTPException
 from app.plugins.employee_plugin import models, schemas
 
 
-def create_employee(db: Session, data: schemas.EmployeeCreate):
+async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
+    # Literal 类型会在 Pydantic 层自动验证，此处无需额外检查
     db_employee = models.Employee(**data.dict())
     db.add(db_employee)
-    db.commit()
-    db.refresh(db_employee)
+    await db.commit()
+    await db.refresh(db_employee)
     return db_employee
 
 
-def get_employees(db: Session, skip: int = 0, limit: int = 100, name: str = None, company: str = None):
-    query = db.query(models.Employee)
+async def get_employees(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    name: str = None,
+    module_name: str = None,
+):
+    stmt = select(models.Employee)
     if name:
-        query = query.filter(models.Employee.name.like(f"%{name}%"))
-    if company:
-        query = query.filter(models.Employee.third_party_company.like(f"%{company}%"))
-    return query.offset(skip).limit(limit).all()
+        stmt = stmt.where(models.Employee.name.icontains(name))
+    if module_name:
+        stmt = stmt.where(models.Employee.module_name.icontains(module_name))
+
+    total_stmt = select(func.count()).select_from(stmt.subquery())
+    total_result = await db.execute(total_stmt)
+    total = total_result.scalar_one()
+
+    stmt = stmt.offset(skip).limit(limit).order_by(models.Employee.id.desc())
+    result = await db.execute(stmt)
+
+    return {
+        "items": result.scalars().all(),
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
-def get_employee(db: Session, employee_id: int):
-    item = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="员工不存在")
+async def get_employee(db: AsyncSession, employee_id: int):
+    stmt = select(models.Employee).where(models.Employee.id == employee_id)
+    result = await db.execute(stmt)
+    item = result.scalar_one_or_none()
     return item
 
 
-def update_employee(db: Session, employee_id: int, data: schemas.EmployeeUpdate):
-    db_employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+async def update_employee(
+    db: AsyncSession, employee_id: int, data: schemas.EmployeeUpdate
+):
+    # Literal 类型会在 Pydantic 层自动验证，此处无需额外检查
+    stmt = select(models.Employee).where(models.Employee.id == employee_id)
+    result = await db.execute(stmt)
+    db_employee = result.scalar_one_or_none()
     if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
+        return None
 
     update_data = data.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_employee, key, value)
 
-    db.commit()
-    db.refresh(db_employee)
+    await db.commit()
+    await db.refresh(db_employee)
     return db_employee
 
 
-def delete_employee(db: Session, employee_id: int):
-    db_employee = db.query(models.Employee).filter(models.Employee.id == employee_id).first()
+async def delete_employee(db: AsyncSession, employee_id: int):
+    stmt = select(models.Employee).where(models.Employee.id == employee_id)
+    result = await db.execute(stmt)
+    db_employee = result.scalar_one_or_none()
     if not db_employee:
-        raise HTTPException(status_code=404, detail="员工不存在")
-    db.delete(db_employee)
-    db.commit()
+        return None
+
+    await db.delete(db_employee)
+    await db.commit()
     return {"msg": "删除成功"}
