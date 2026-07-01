@@ -19,11 +19,12 @@ from app.utils.handle_excel_testrecord import (
 )
 from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
+from app.utils.upload_files import upload_files_general
 
 
 # 创建
 async def create_test_record(
-    db: AsyncSession, record: schemas.TestRecordCreate, current_user: User
+    db: AsyncSession, record: schemas.TestRecordCreate, current_user: User, files=None
 ):
     record.creator = current_user.full_name
     record.creator_id = current_user.id
@@ -31,6 +32,13 @@ async def create_test_record(
     db.add(db_record)
     await db.commit()
     await db.refresh(db_record)
+
+    if files and files[0].filename:
+        saved_paths = await upload_files_general(files, "test_records", db_record.id)
+        if saved_paths:
+            db_record.analyze_attach = saved_paths
+            await db.commit()
+            await db.refresh(db_record)
     return "success"
 
 
@@ -63,7 +71,7 @@ async def get_test_records_adv(
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
 
-    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
+    stmt = stmt.order_by(models.TestRecord.id.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return {
         "items": list(result.scalars().all()),
@@ -134,7 +142,7 @@ async def get_test_record(db: AsyncSession, record_id: int):
 
 # 更新
 async def update_test_record(
-    db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate
+    db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate, files=None
 ):
 
     db_record = await db.get(models.TestRecord, record_id)
@@ -144,6 +152,11 @@ async def update_test_record(
     update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)
+
+    if files and files[0].filename:
+        saved_paths = await upload_files_general(files, "test_records", record_id)
+        if saved_paths:
+            db_record.analyze_attach = saved_paths
 
     await db.commit()
     await db.refresh(db_record)

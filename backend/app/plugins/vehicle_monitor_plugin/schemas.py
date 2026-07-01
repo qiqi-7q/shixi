@@ -16,6 +16,18 @@ class VehicleMonitorBase(BaseModel):
     power_duration: Optional[Decimal] = Field(None, description="车辆上电时间")
     usage: Optional[Decimal] = Field(None, description="使用率")
     distance: Optional[Decimal] = Field(None, description="里程")
+    group: Optional[str] = Field(None, max_length=50, description="组别")
+    model: Optional[str] = Field(None, max_length=50, description="车辆型号")
+    power: Optional[int] = Field(None, description="上电状态(0:未上电, 1:已上电)")
+    dataMQ: Optional[int] = Field(None, description="数采MQ状态(0:未连接, 1:已连接)")
+    TCP: Optional[int] = Field(None, description="TCP状态(0:未连接, 1:已连接)")
+    remoteMQ: Optional[int] = Field(None, description="远程MQ状态(0:未连接, 1:已连接)")
+    smart_distance: Optional[Decimal] = Field(None, description="智驾里程")
+    position: Optional[str] = Field(None, max_length=100, description="位置")
+    max_speed: Optional[Decimal] = Field(None, description="最高车速")
+    remain_battery: Optional[Decimal] = Field(None, description="剩余电量")
+    charge_count: Optional[int] = Field(None, description="充电次数")
+    is_del: Optional[int] = Field(None, description="是否删除(0:未删除, 1:已删除)")
 
 
 # 创建
@@ -33,7 +45,19 @@ class VehicleMonitorUpdate(BaseModel):
     vin_code: Optional[str] = Field(None, max_length=17, description="测试车辆VIN号")
     power_duration: Optional[Decimal] = Field(None, description="车辆上电时间")
     usage: Optional[Decimal] = Field(None, description="使用率")
-    distance: Optional[Decimal] = Field(None, description="里程")
+    distance: Optional[Decimal] = Field(None, description="行驶里程")
+    group: Optional[str] = Field(None, max_length=50, description="组别")
+    model: Optional[str] = Field(None, max_length=50, description="车辆型号")
+    power: Optional[int] = Field(None, description="上电状态(0:未上电, 1:已上电)")
+    dataMQ: Optional[int] = Field(None, description="数采MQ状态(0:未连接, 1:已连接)")
+    TCP: Optional[int] = Field(None, description="TCP状态(0:未连接, 1:已连接)")
+    remoteMQ: Optional[int] = Field(None, description="远程MQ状态(0:未连接, 1:已连接)")
+    smart_distance: Optional[Decimal] = Field(None, description="智驾里程")
+    position: Optional[str] = Field(None, max_length=100, description="位置")
+    max_speed: Optional[Decimal] = Field(None, description="最高车速")
+    remain_battery: Optional[Decimal] = Field(None, description="剩余电量")
+    charge_count: Optional[int] = Field(None, description="充电次数")
+    is_del: Optional[int] = Field(None, description="是否删除(0:未删除, 1:已删除)")
 
 
 # 响应模型
@@ -45,3 +69,7 @@ class VehicleMonitorResponse(VehicleMonitorBase):
     update_time: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# 获取VehicleMonitor模型所有的字段
+VEHICLE_MONITOR_WHITELIST = set(VehicleMonitorResponse.model_fields.keys())

@@ -18,7 +18,7 @@ class RedisService:
 
     async def set_data(self, key: str, value: str, expire_seconds: int = 1800):
         """存储数据到Redis"""
-        await self.redis_client.setex(key, expire_seconds, value)
+        await self.redis_client.set(key, value, ex=expire_seconds)
 
     async def get_data(self, key: str) -> str:
         """从Redis获取数据"""
@@ -72,7 +72,7 @@ class RedisService:
     async def set_token(self, user_id: int, token: str, expire_seconds: int = 1800):
         """存储用户token到Redis"""
         key = f"user_token:{user_id}"
-        await self.redis_client.setex(key, expire_seconds, token)
+        await self.redis_client.set(key, token, ex=expire_seconds)
 
     async def get_token(self, user_id: int) -> str:
         """获取用户token"""

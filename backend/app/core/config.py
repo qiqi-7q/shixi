@@ -61,22 +61,30 @@ class Settings(BaseSettings):
     # SMTP 端口（465 是 SSL 安全端口）
     MAIL_PORT: int = 587
 
-    LEAPMOTOR_CLOUD_URL: str = "https://test-data-open-platform.leapmotor.com"
-    LEAPMOTOR_CLOUD_APP_ID: str = "57fb1e5c037a4e2ca0d8e20a20114173"
-    LEAPMOTOR_CLOUD_APP_SECRET: str = (
-        "czjVYxu1RqcD4TdGYmDDP7rcqay0zTKxUfLrfE/YUayCv0nkeHwD79a4FD3zqmIG"
+    # 零云平台数据接口配置
+    DURATION_URL: str = (
+        "https://dataasset.leapmotor.com/data-asset-api/v1/api/data?id=13"
     )
+    DURATION_SERVICE_KEY: str = "3IsPMD39ot9pxZy"
+    MILEAGE_URL: str = (
+        "https://dataasset.leapmotor.com/data-asset-api/v1/api/data?id=14"
+    )
+    MILEAGE_SERVICE_KEY: str = "3J5FlzV0T132zOW"
 
     # 高级搜索配置
     ADVANCED_OPERATORS_MAP: dict = {
         # 高级搜索支持的操作符（使用 SQLAlchemy 正确语法）
-        "icontains": lambda x, y: x.ilike(f"%{y}%"),  # 包含（不区分大小写）
+        "icontains": lambda x, y: x.icontains(y),  # 包含（不区分大小写）
         "eq": lambda x, y: x == y,  # 等于
         "not_eq": lambda x, y: x != y,  # 不等于
-        "startswith": lambda x, y: x.like(f"{y}%"),  # 开头是
-        "endswith": lambda x, y: x.like(f"%{y}"),  # 结尾是
+        "startswith": lambda x, y: x.startswith(y),  # 开头是
+        "endswith": lambda x, y: x.endswith(y),  # 结尾是
         "between": lambda x, y: x.between(y[0], y[1]),  # 在范围内（y是数组）
         "not_between": lambda x, y: ~(x.between(y[0], y[1])),  # 不在范围内
+        "lt": lambda x, y: x < y,  # 小于
+        "lte": lambda x, y: x <= y,  # 小于等于
+        "gt": lambda x, y: x > y,  # 大于
+        "gte": lambda x, y: x >= y,  # 大于等于
     }
 
     # 支持的操作符列表（用于接口验证）
@@ -88,6 +96,10 @@ class Settings(BaseSettings):
         "endswith",
         "between",
         "not_between",
+        "lt",
+        "lte",
+        "gt",
+        "gte",
     }
 
     class Config:

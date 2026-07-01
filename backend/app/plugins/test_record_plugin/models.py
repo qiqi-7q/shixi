@@ -10,7 +10,7 @@ except ImportError:
 
 import enum
 
-from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum, Integer, String, Text, JSON
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -95,7 +95,7 @@ class TestRecord(Base):
     wetrack_link = Column(String(500), comment="Wetrack链接")
     analyze_result = Column(Text, comment="分析结果")
     analyze_user = Column(String(50), comment="分析人员")
-    analyze_attach = Column(String(500), comment="分析附件")
+    analyze_attach = Column(JSON, default=list, comment="分析附件（多文件路径数组）")
     software_version = Column(String(50), comment="软件版本")
     remarks = Column(Text, comment="备注")
 

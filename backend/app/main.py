@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
 from app.core.scheduler import scheduler, stop_scheduler
+from app.utils.upload_files import upload_router
 
 
 @asynccontextmanager
@@ -52,9 +53,9 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "project_plan", "app.plugins.project_plan_plugin.plugin"
     )
-    # await plugin_manager.register_plugin(
-    #     "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
-    # )
+    await plugin_manager.register_plugin(
+        "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
+    )
 
     yield
     # 关闭时执行
@@ -98,6 +99,9 @@ settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 # ========== 挂载静态文件 ==========
 # 访问地址：http://127.0.0.1:8000/static/xxx.png
 app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="static")
+
+# ========== 注册通用文件上传路由 ==========
+app.include_router(upload_router, prefix="/api", tags=["通用文件上传"])
 
 
 @app.get("/")

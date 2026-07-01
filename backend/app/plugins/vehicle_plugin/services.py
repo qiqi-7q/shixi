@@ -3,16 +3,15 @@ from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime, date
 
 from fastapi import UploadFile
-from openpyxl import load_workbook
 from sqlalchemy import and_, delete, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.vehicle_plugin import models, schemas
-
-from app.utils.build_condition import build_condition, _find_enum_by_value
+from app.plugins.employee_plugin.models import Employee, JobType
+from app.utils.build_condition import build_condition, find_enum_by_value
 
 from sqlalchemy import func
-
+from app.utils.all_orderby import universal_sort
 from app.utils.handle_excel_testrecord import (
     build_enum_lookup,
     generate_unique_key,
@@ -61,6 +60,74 @@ STRING_FIELDS = (
 class VehicleService:
 
     @staticmethod
+    async def get_vehicle_models(db: AsyncSession):
+        # 总车辆表获取所有车型, 并去重
+        stmt = await db.execute(select(models.Vehicle.model).distinct())
+        return list(stmt.scalars().all())
+
+    @staticmethod
+    async def get_vehicles_simple(
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        vehicle_status: Optional[str] = None,
+        test_status: Optional[str] = None,
+        group: Optional[str] = None,
+        vin_code: Optional[str] = None,
+        model: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+    ) -> dict:
+        # 1. 统一收集筛选条件
+        filters = []
+
+        # 处理 vehicle_status（支持英文枚举名和中文值）
+        if vehicle_status:
+            filters.append(models.Vehicle.vehicle_status == vehicle_status)
+        if group:
+            filters.append(models.Vehicle.group == group)
+        if vin_code:
+            filters.append(models.Vehicle.vin_code.contains(vin_code))
+        if model:
+            filters.append(models.Vehicle.model.icontains(model))
+        if test_status:
+            filters.append(models.Vehicle.test_status == test_status)
+
+        # 2. 先查符合条件的总条数（不带分页）
+        count_stmt = select(func.count(models.Vehicle.id)).where(*filters)
+        total = await db.scalar(count_stmt) or 0
+
+        stmt = select(models.Vehicle).where(*filters)
+
+        if not sort_by:
+            data_stmt = (
+                stmt.order_by(models.Vehicle.id.desc()).offset(skip).limit(limit)
+            )
+
+            result = await db.execute(data_stmt)
+            data_list = list(result.scalars().all())
+
+        else:
+            result = await db.execute(stmt)
+            data_list = list(result.scalars().all())
+
+            # 排序处理：在数据查询完成后、返回响应前执行
+            if sort_by and data_list:
+                # 校验排序字段是否在车辆模型白名单中, 默认按 model 排序
+                if sort_by not in schemas.VEHICLE_WHITELIST:
+                    sort_by = "model"
+
+                # 校验排序方向，无效值默认使用 model 排序
+                valid_order = sort_order.lower() if sort_order else "asc"
+                if valid_order not in ("asc", "desc"):
+                    valid_order = "asc"
+                data_list = universal_sort(data_list, sort_by, valid_order)
+            # 分页处理：在数据查询完成后、返回响应前执行
+            data_list = data_list[skip : skip + limit]
+
+        return {"items": data_list, "total": total, "skip": skip, "limit": limit}
+
+    @staticmethod
     async def get_vehicles(
         db: AsyncSession,
         skip: int = 0,
@@ -98,50 +165,6 @@ class VehicleService:
             "skip": skip,
             "limit": limit,
         }
-
-    @staticmethod
-    async def get_vehicles_simple(
-        db: AsyncSession,
-        skip: int = 0,
-        limit: int = 100,
-        vehicle_status: Optional[str] = None,
-        test_status: Optional[str] = None,
-        group: Optional[str] = None,
-        vin_code: Optional[str] = None,
-        model: Optional[str] = None,
-        driver_name: Optional[str] = None,
-    ) -> dict:
-        # 1. 统一收集筛选条件
-        filters = []
-
-        # 处理 vehicle_status（支持英文枚举名和中文值）
-        if vehicle_status:
-            filters.append(models.Vehicle.vehicle_status == vehicle_status)
-        if group:
-            filters.append(models.Vehicle.group == group)
-        if vin_code:
-            filters.append(models.Vehicle.vin_code.contains(vin_code))
-        if model:
-            filters.append(models.Vehicle.model.icontains(model))
-        if test_status:
-            filters.append(models.Vehicle.test_status == test_status)
-
-        # 2. 先查符合条件的总条数（不带分页）
-        count_stmt = select(func.count(models.Vehicle.id)).where(*filters)
-        total = await db.scalar(count_stmt) or 0
-
-        # 3. 再查分页数据
-        data_stmt = (
-            select(models.Vehicle)
-            .where(*filters)
-            .offset(skip)
-            .limit(limit)
-            .order_by(models.Vehicle.id.desc())
-        )
-        result = await db.execute(data_stmt)
-        data_list = list(result.scalars().all())
-
-        return {"items": data_list, "total": total, "skip": skip, "limit": limit}
 
     @staticmethod
     async def get_vehicle(db: AsyncSession, vehicle_id: int) -> models.Vehicle | str:
@@ -562,21 +585,42 @@ class BorrowService:
             .order_by(models.BorrowRecord.borrow_time.desc())
         )
 
-        # 提取记录的borrower、borrow_time返回列表
-        # existing_borrows = [
-        #     {"borrower": record.borrower, "borrow_time": record.borrow_time}
-        #     for record in existing_borrows.scalars().all()
-        # ]
         existing_borrows = [
             {
-                "borrower": record._mapping["borrower"],
-                "borrow_time": record._mapping["borrow_time"],
+                "borrower": record["borrower"],
+                "borrow_time": record["borrow_time"],
             }
-            for record in existing_borrows.all()
+            for record in existing_borrows.mappings().all()
         ]
         if not existing_borrows:
             return []
         return existing_borrows
+
+    # 获取内照处于有效期内的司机的id和姓名,以当前日期为准,根据id asc排序
+    @staticmethod
+    async def get_dcv(db: AsyncSession) -> list[dict]:
+        date_today = date.today()
+        stmt = await db.execute(
+            select(Employee.id, Employee.name, Employee.card_validity)
+            .where(
+                Employee.job_type == JobType.DRIVER,
+                Employee.card_validity.is_not(None),
+                Employee.card_validity >= date_today,
+            )
+            .order_by(Employee.id.asc())
+        )
+
+        dr_re = [
+            {
+                "id": record["id"],
+                "name": record["name"],
+                "card_validity": record["card_validity"],
+            }
+            for record in stmt.mappings().all()
+        ]
+        if not dr_re:
+            return []
+        return dr_re
 
     @staticmethod
     async def create_borrow_record(
@@ -591,6 +635,14 @@ class BorrowService:
         print("current", current_time, borrow.borrow_time)
         if borrow.borrow_time < current_time:
             return "借用时间必须是今天及之后的日期"
+
+        # 根据传回的司机的id获取内照有效期
+        dr_card = await db.execute(
+            select(Employee.card_validity).where(Employee.id == borrow.driver_id)
+        )
+        dr_card = dr_card.scalar_one_or_none()
+        if dr_card < borrow.borrow_time:
+            return "借用时间内内照有效期过期，无法借用，请选择其他司机"
 
         # 检查车辆是否存在
         vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
@@ -620,7 +672,7 @@ class BorrowService:
 
             # 创建借用记录
             borrow.record_creator = current_user.full_name
-            db_borrow = models.BorrowRecord(**borrow.model_dump())
+            db_borrow = models.BorrowRecord(**borrow.model_dump(exclude={"driver_id"}))
 
             db.add(db_borrow)
             await db.commit()
@@ -787,16 +839,14 @@ class VehicleStatsService:
         group: Optional[str] = None,
         vehicle_status: Optional[str] = None,
         test_status: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
     ) -> dict:
         """获取车辆概览统计（卡片数据）"""
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.like(f"%{model}%"))
+            filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             filters.append(models.Vehicle.group == group)
         if vehicle_status:
@@ -883,13 +933,13 @@ class VehicleStatsService:
         # 1. 构建车辆筛选条件
         vehicle_filters = []
         if model:
-            vehicle_filters.append(models.Vehicle.model.like(f"%{model}%"))
+            vehicle_filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            vehicle_filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            vehicle_filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             group_enum = getattr(
                 models.VehicleGroup, group, None
-            ) or _find_enum_by_value(models.VehicleGroup, group)
+            ) or find_enum_by_value(models.VehicleGroup, group)
             if group_enum:
                 vehicle_filters.append(models.Vehicle.group == group_enum)
             else:
@@ -897,7 +947,7 @@ class VehicleStatsService:
         if vehicle_status:
             status_enum = getattr(
                 models.VehicleStatus, vehicle_status, None
-            ) or _find_enum_by_value(models.VehicleStatus, vehicle_status)
+            ) or find_enum_by_value(models.VehicleStatus, vehicle_status)
             if status_enum:
                 vehicle_filters.append(models.Vehicle.vehicle_status == status_enum)
             else:
@@ -905,7 +955,7 @@ class VehicleStatsService:
         if test_status:
             test_enum = getattr(
                 models.TestStatus, test_status, None
-            ) or _find_enum_by_value(models.TestStatus, test_status)
+            ) or find_enum_by_value(models.TestStatus, test_status)
             if test_enum:
                 vehicle_filters.append(models.Vehicle.test_status == test_enum)
             else:
@@ -999,9 +1049,9 @@ class VehicleStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.like(f"%{model}%"))
+            filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             filters.append(models.Vehicle.group == group)
         if vehicle_status:
@@ -1057,11 +1107,11 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+            filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
-            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
-            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+            filters.append(models.BorrowRecord.driver_name.icontains(driver_name))
 
         # 总借用记录数
         total_stmt = select(func.count(models.BorrowRecord.id))
@@ -1125,11 +1175,13 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+            filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
-            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
-            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+            filters.append(models.BorrowRecord.driver_name.icontains(driver_name))
+        if borrow_status:
+            filters.append(models.BorrowRecord.borrow_status == borrow_status)
 
         stmt = select(
             models.BorrowRecord.borrow_status.label("status"),

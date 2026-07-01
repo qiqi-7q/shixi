@@ -208,7 +208,7 @@ async def batch_import(
     上传Excel文件，批量导入测试记录数据。自动进行数据去重、格式校验和批量写入。
     """
     if not current_user:
-        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+        return {"message": "token已失效，请重新登录", "code": 401, "data": None}
     result = await services.batch_import_records(file, db, current_user)
     return result
 

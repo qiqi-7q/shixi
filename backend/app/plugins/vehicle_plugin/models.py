@@ -102,20 +102,3 @@ class BorrowRecord(Base):
     remarks = Column(Text, comment="备注")
     # 关联车辆
     vehicle = relationship("Vehicle", back_populates="borrow_records")
-
-
-# 车辆使用率
-# class UsageRate(Base):
-#     __tablename__ = "usage_rates"
-#
-#     id = Column(Integer, primary_key=True, index=True)
-#     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
-#     vin_code = Column(String(17), index=True, nullable=False, comment="VIN码")
-#     fireStatus = Column(Boolean, default=False, comment="使用状态")
-#     doorState = Column(Boolean, default=False, comment="门状态")
-#     gpsLocation = Column(String(100), comment="GPS位置信息")
-#     batteryPower = Column(Integer, comment="电池电量")
-#     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
-#     updated_at = Column(
-#         DateTime, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
-#     )

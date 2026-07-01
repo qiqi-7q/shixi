@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from fastapi import HTTPException
 from app.plugins.employee_plugin import models, schemas
+from typing import Optional
+from app.utils.all_orderby import universal_sort
 
 
 async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
@@ -13,12 +15,14 @@ async def create_employee(db: AsyncSession, data: schemas.EmployeeCreate):
     return db_employee
 
 
-async def get_employees(
+async def get_employees_simple(
     db: AsyncSession,
     skip: int = 0,
     limit: int = 100,
     name: str = None,
     module_name: str = None,
+    sort_by: Optional[str] = None,
+    sort_order: Optional[str] = None,
 ):
     stmt = select(models.Employee)
     if name:
@@ -26,19 +30,37 @@ async def get_employees(
     if module_name:
         stmt = stmt.where(models.Employee.module_name.icontains(module_name))
 
-    total_stmt = select(func.count()).select_from(stmt.subquery())
-    total_result = await db.execute(total_stmt)
-    total = total_result.scalar_one()
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = await db.scalar(count_stmt) or 0
 
     stmt = stmt.offset(skip).limit(limit).order_by(models.Employee.id.desc())
     result = await db.execute(stmt)
 
-    return {
-        "items": result.scalars().all(),
-        "total": total,
-        "skip": skip,
-        "limit": limit,
-    }
+    if not sort_by:
+        data_stmt = stmt.order_by(models.Employee.id.desc()).offset(skip).limit(limit)
+
+        result = await db.execute(data_stmt)
+        data_list = list(result.scalars().all())
+
+    else:
+        result = await db.execute(stmt)
+        data_list = list(result.scalars().all())
+
+        # 排序处理：在数据查询完成后、返回响应前执行
+        if sort_by and data_list:
+            # 校验排序字段是否在员工模型白名单中, 默认按 id 排序
+            if sort_by not in schemas.EMPLOYEE_WHITELIST:
+                sort_by = "id"
+
+            # 校验排序方向，无效值默认使用 id 排序
+            valid_order = sort_order.lower() if sort_order else "asc"
+            if valid_order not in ("asc", "desc"):
+                valid_order = "asc"
+            data_list = universal_sort(data_list, sort_by, valid_order)
+            # 分页处理：在数据查询完成后、返回响应前执行
+        data_list = data_list[skip : skip + limit]
+
+    return {"items": data_list, "total": total, "skip": skip, "limit": limit}
 
 
 async def get_employee(db: AsyncSession, employee_id: int):

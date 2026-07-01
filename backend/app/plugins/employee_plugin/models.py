@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Enum as SQLEnum
+from sqlalchemy import Column, DATE, Integer, String, DateTime, Text, Enum as SQLEnum
 from sqlalchemy.sql import func
 from app.core.database import Base
 from enum import Enum
@@ -13,6 +13,7 @@ class Employee(Base):
 
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
     # 新增字段
+    card_validity = Column(DATE, comment="内照有效期")
     module_name = Column(String(100), index=True, comment="模块名称")
     module_manager = Column(String(100), comment="模块负责人")
     name = Column(String(100), nullable=False, index=True, comment="姓名")

@@ -1,8 +1,5 @@
-from datetime import date
 from typing import List, Optional
-
 from fastapi import APIRouter, Depends, Query, UploadFile
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -15,6 +12,45 @@ router = APIRouter()
 
 
 # ============= 静态路由放在前面 =============
+@router.get("/models")
+async def get_vehicle_models(
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有车型"""
+    model_list = await services.VehicleService.get_vehicle_models(db)
+    return {"data": model_list}
+
+
+@router.get("/fixsearch")
+async def get_vehicles_simple(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    vehicle_status: Optional[str] = None,
+    vin_code: Optional[str] = None,
+    group: Optional[str] = None,
+    model: Optional[str] = None,
+    test_status: Optional[str] = None,
+    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
+    sort_order: Optional[str] = Query(
+        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取车辆列表（固定字段查询，支持排序）"""
+    vehicleData = await services.VehicleService.get_vehicles_simple(
+        db,
+        skip=skip,
+        limit=limit,
+        group=group,
+        vehicle_status=vehicle_status,
+        vin_code=vin_code,
+        model=model,
+        test_status=test_status,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    return {"data": vehicleData, "message": "success", "code": 200}
 
 
 @router.get("/stats/overview")
@@ -189,32 +225,6 @@ async def get_vehicles(
         limit=limit,
         conditions=conditions,
     )
-    return {"data": vehicleData, "message": "success", "code": 200}
-
-
-@router.get("/fixsearch")
-async def get_vehicles_simple(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    vehicle_status: Optional[str] = None,
-    vin_code: Optional[str] = None,
-    group: Optional[str] = None,
-    model: Optional[str] = None,
-    test_status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    """获取车辆列表（固定字段查询）"""
-    vehicleData = await services.VehicleService.get_vehicles_simple(
-        db,
-        skip=skip,
-        limit=limit,
-        group=group,
-        vehicle_status=vehicle_status,
-        vin_code=vin_code,
-        model=model,
-        test_status=test_status,
-    )
-
     return {"data": vehicleData, "message": "success", "code": 200}
 
 
@@ -464,6 +474,16 @@ async def borrowed_records(
     return {"data": existing_borrows, "message": "success", "code": 200}
 
 
+@borrow_router.post("/borrowedriver")
+async def borrow_driver(
+    db: AsyncSession = Depends(get_db),
+    # current_user: User = Depends(get_current_user)
+):
+    """获取内照处于有效期内的司机的id和姓名,以当前日期为准,根据id asc排序"""
+    dr_re = await services.BorrowService.get_dcv(db)
+    return {"data": dr_re, "message": "success", "code": 200}
+
+
 @borrow_router.post("/createborrow")
 async def create_borrow_record(
     borrow: schemas.BorrowRecordCreate,
@@ -472,7 +492,7 @@ async def create_borrow_record(
 ):
     """创建借用记录"""
     if not current_user:
-        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+        return {"message": "token已失效，请重新登录", "code": 401, "data": None}
     result = await services.BorrowService.create_borrow_record(db, borrow, current_user)
     if result == "success":
         return {

@@ -1,6 +1,6 @@
 from typing import Optional
-
-from fastapi import File, Form, UploadFile
+from typing import Optional, List
+from fastapi import APIRouter, File, Form, UploadFile
 import aiofiles
 from app.core.config import settings
 from app.core.redis_client import redisserve
@@ -10,6 +10,8 @@ TEMP_DIR = settings.UPLOAD_DIR / "temp"
 
 # # 允许的文件格式
 # ALLOWED_EXT = {"jpg", "jpeg", "png", "gif", "pdf", "txt", "doc", "docx"}
+
+upload_router = APIRouter(prefix="/upload", tags=["通用文件上传"])
 
 
 async def upload_file(
@@ -127,3 +129,92 @@ async def upload_file(
 
     finally:
         await redisserve.lua_script(lock_key, client_id)
+
+
+async def upload_files_general(
+    files,
+    table_name: str,
+    record_id: int,
+    ALLOWED_EXT: set = None,
+    start_index: int = 1,
+):
+    """
+    通用批量上传文件接口
+    文件存储路径：{table_name}_files/{record_id}/{record_id}_01, {record_id}_02, ...
+    :param files: UploadFile列表
+    :param table_name: 表名，用于创建目录
+    :param record_id: 记录ID
+    :param ALLOWED_EXT: 允许的文件扩展名集合
+    :param start_index: 起始索引
+    :return: 文件路径列表
+    """
+    upload_dir = settings.STATIC_DIR / f"{table_name}_files" / str(record_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_paths = []
+    for offset, file in enumerate(files):
+        if not file or not file.filename:
+            continue
+
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+        if ALLOWED_EXT and "." + ext not in ALLOWED_EXT:
+            continue
+
+        content = await file.read()
+        if not content:
+            continue
+
+        idx = start_index + offset
+        new_filename = (
+            f"{record_id}_{idx:02d}.{ext}" if ext else f"{record_id}_{idx:02d}"
+        )
+        file_path = upload_dir / new_filename
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        saved_paths.append(f"/static/{table_name}_files/{record_id}/{new_filename}")
+
+    return saved_paths
+
+
+@upload_router.post("/{table_name}/{record_id}")
+async def upload_files_universal(
+    table_name: str,
+    record_id: int,
+    files: List[UploadFile] = File(..., description="文件列表"),
+    overwrite: bool = Form(True, description="是否覆盖旧文件，默认true"),
+):
+    """
+    通用文件上传接口（全局路由）
+    文件存储路径：{table_name}_files/{record_id}/{record_id}_01, {record_id}_02, ...
+
+    :param table_name: 表名，用于创建目录
+    :param record_id: 记录ID
+    :param files: 文件列表
+    :param overwrite: 是否覆盖旧文件
+    """
+    valid_files = [f for f in files if f and f.filename]
+    if not valid_files:
+        return {"message": "请选择要上传的文件", "code": 400, "data": None}
+
+    upload_dir = settings.STATIC_DIR / f"{table_name}_files" / str(record_id)
+
+    if overwrite and upload_dir.exists():
+        for old_file in upload_dir.iterdir():
+            if old_file.is_file():
+                old_file.unlink()
+
+    saved_paths = await upload_files_general(
+        valid_files, table_name, record_id, start_index=1
+    )
+
+    return {
+        "message": f"成功上传{len(saved_paths)}个文件",
+        "code": 200,
+        "data": {
+            "record_id": record_id,
+            "uploaded_files": saved_paths,
+            "total_count": len(saved_paths),
+        },
+    }
