@@ -34,7 +34,9 @@ async def create_test_record(
     await db.refresh(db_record)
 
     if files and files[0].filename:
-        saved_paths = await upload_files_general(files, "test_records", db_record.id)
+        saved_paths = await upload_files_general(
+            files, "test_records", db_record.id, overwrite=False
+        )
         if saved_paths:
             db_record.analyze_attach = saved_paths
             await db.commit()
@@ -144,19 +146,42 @@ async def get_test_record(db: AsyncSession, record_id: int):
 async def update_test_record(
     db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate, files=None
 ):
+    from sqlalchemy.orm.attributes import flag_modified
 
     db_record = await db.get(models.TestRecord, record_id)
     if not db_record:
         return "测试记录不存在"
 
     update_data = record.model_dump(exclude_unset=True)
+    if "analyze_attach" in update_data:
+        incoming_attach = update_data.pop("analyze_attach")
+        if db_record.analyze_attach:
+            existing_paths = list(db_record.analyze_attach)
+            for path in incoming_attach:
+                if path not in existing_paths:
+                    existing_paths.append(path)
+            db_record.analyze_attach = existing_paths
+        else:
+            db_record.analyze_attach = incoming_attach
+        flag_modified(db_record, "analyze_attach")
+
     for key, value in update_data.items():
         setattr(db_record, key, value)
 
     if files and files[0].filename:
-        saved_paths = await upload_files_general(files, "test_records", record_id)
+        saved_paths = await upload_files_general(
+            files, "test_records", record_id, overwrite=False
+        )
         if saved_paths:
-            db_record.analyze_attach = saved_paths
+            if db_record.analyze_attach:
+                existing_paths = list(db_record.analyze_attach)
+                for path in saved_paths:
+                    if path not in existing_paths:
+                        existing_paths.append(path)
+                db_record.analyze_attach = existing_paths
+            else:
+                db_record.analyze_attach = saved_paths
+            flag_modified(db_record, "analyze_attach")
 
     await db.commit()
     await db.refresh(db_record)

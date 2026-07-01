@@ -137,6 +137,7 @@ async def upload_files_general(
     record_id: int,
     ALLOWED_EXT: set = None,
     start_index: int = 1,
+    overwrite: bool = False,
 ):
     """
     通用批量上传文件接口
@@ -145,11 +146,30 @@ async def upload_files_general(
     :param table_name: 表名，用于创建目录
     :param record_id: 记录ID
     :param ALLOWED_EXT: 允许的文件扩展名集合
-    :param start_index: 起始索引
+    :param start_index: 起始索引（仅在 overwrite=True 或目录为空时生效）
+    :param overwrite: 是否覆盖所有旧文件并重新编号（True=从_01开始，False=从最大索引继续）
     :return: 文件路径列表
     """
+    import re
+
     upload_dir = settings.STATIC_DIR / f"{table_name}_files" / str(record_id)
     upload_dir.mkdir(parents=True, exist_ok=True)
+
+    if overwrite:
+        for old_file in upload_dir.iterdir():
+            if old_file.is_file():
+                old_file.unlink()
+        current_max_idx = start_index - 1
+    else:
+        current_max_idx = start_index - 1
+        pattern = re.compile(rf"^{record_id}_(\d{{2}})")
+        for existing_file in upload_dir.iterdir():
+            if existing_file.is_file():
+                match = pattern.match(existing_file.name)
+                if match:
+                    idx = int(match.group(1))
+                    if idx > current_max_idx:
+                        current_max_idx = idx
 
     saved_paths = []
     for offset, file in enumerate(files):
@@ -164,7 +184,7 @@ async def upload_files_general(
         if not content:
             continue
 
-        idx = start_index + offset
+        idx = current_max_idx + offset + 1
         new_filename = (
             f"{record_id}_{idx:02d}.{ext}" if ext else f"{record_id}_{idx:02d}"
         )
@@ -183,7 +203,7 @@ async def upload_files_universal(
     table_name: str,
     record_id: int,
     files: List[UploadFile] = File(..., description="文件列表"),
-    overwrite: bool = Form(True, description="是否覆盖旧文件，默认true"),
+    overwrite: bool = Form(False, description="是否覆盖旧文件，默认false"),
 ):
     """
     通用文件上传接口（全局路由）
@@ -198,15 +218,8 @@ async def upload_files_universal(
     if not valid_files:
         return {"message": "请选择要上传的文件", "code": 400, "data": None}
 
-    upload_dir = settings.STATIC_DIR / f"{table_name}_files" / str(record_id)
-
-    if overwrite and upload_dir.exists():
-        for old_file in upload_dir.iterdir():
-            if old_file.is_file():
-                old_file.unlink()
-
     saved_paths = await upload_files_general(
-        valid_files, table_name, record_id, start_index=1
+        valid_files, table_name, record_id, start_index=1, overwrite=overwrite
     )
 
     return {

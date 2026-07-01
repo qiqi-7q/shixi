@@ -202,19 +202,6 @@ class VehicleMonitorService:
 
         return groups
 
-    # @staticmethod
-    # async def get_dates(db: AsyncSession):
-    #     stmt = await db.execute(
-    #         select(models.VehicleMonitor.monitor_date)
-    #         .where(
-    #             models.VehicleMonitor.is_del == 0,
-    #         )
-    #         .distinct()
-    #         .order_by(models.VehicleMonitor.monitor_date.asc())
-    #     )
-    #     dates = stmt.scalars().all()
-    #     return dates
-
     @staticmethod
     async def get_usages(db: AsyncSession, monitor_date: date) -> list[dict]:
         stmt = await db.execute(
@@ -245,3 +232,32 @@ class VehicleMonitorService:
         ]
 
         return usage_info
+
+    @staticmethod
+    async def get_distences(db: AsyncSession, monitor_date: date) -> list[dict]:
+        stmt = await db.execute(
+            select(
+                models.VehicleMonitor.id,
+                models.VehicleMonitor.vin_code,
+                models.VehicleMonitor.distance,
+            )
+            .where(
+                models.VehicleMonitor.is_del == 0,
+                models.VehicleMonitor.monitor_date == monitor_date,
+            )
+            .order_by(models.VehicleMonitor.distance.desc())
+        )
+        distances_dict = stmt.mappings().all()
+
+        if not distances_dict:
+            return []
+        distances_info = [
+            {
+                "id": record["id"],
+                "vin_code": record["vin_code"],
+                "distance": record["distance"],
+            }
+            for record in distances_dict
+        ]
+
+        return distances_info

@@ -174,15 +174,15 @@ async def get_groups(
     return {"data": result, "message": "success", "code": 200}
 
 
-# @router.get("/dates")
-# async def get_dates(db: AsyncSession = Depends(get_db)):
-#     """获取所有日期"""
-#     result = await services.VehicleMonitorService.get_dates(db)
-#     return {"data": result, "message": "success", "code": 200}
-
-
 @router.get("/usages/{monitor_date}")
 async def get_usages(monitor_date: date, db: AsyncSession = Depends(get_db)):
     """获取所选择日期的所有记录的使用率和时长"""
     result = await services.VehicleMonitorService.get_usages(db, monitor_date)
+    return {"data": result, "message": "success", "code": 200}
+
+
+@router.get("/distences/{monitor_date}")
+async def get_distences(monitor_date: date, db: AsyncSession = Depends(get_db)):
+    """获取所选择日期的所有记录的行驶里程"""
+    result = await services.VehicleMonitorService.get_distences(db, monitor_date)
     return {"data": result, "message": "success", "code": 200}

@@ -51,15 +51,15 @@ async def register(user: schemas.UserCreate, db: AsyncSession = Depends(get_db))
         data={"sub": result.username}, expires_delta=access_token_expires
     )
 
-    # # 将token存储到Redis
-    # await redisserve.set_token(
-    #     result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    # )
-
     return {
         "code": 201,
         "message": "注册成功",
-        "data": {"user": result, "access_token": access_token, "token_type": "bearer"},
+        "data": {
+            "userid": result.id,
+            "user": result,
+            "access_token": access_token,
+            "token_type": "bearer",
+        },
     }
 
 
