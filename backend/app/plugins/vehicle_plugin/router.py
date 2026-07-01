@@ -63,12 +63,6 @@ async def get_vehicle_overview(
         None, description="使用状态（可借用/已借出/维护中/已预定）"
     ),
     test_status: Optional[str] = Query(None, description="车辆状态"),
-    start_date: Optional[str] = Query(
-        None, description="统计起始日期（格式：YYYY-MM-DD）"
-    ),
-    end_date: Optional[str] = Query(
-        None, description="统计截止日期（格式：YYYY-MM-DD）"
-    ),
 ):
     """获取车辆概览统计（卡片数据）"""
     stats = await services.VehicleStatsService.get_vehicle_overview(
@@ -78,8 +72,6 @@ async def get_vehicle_overview(
         group=group,
         vehicle_status=vehicle_status,
         test_status=test_status,
-        start_date=start_date,
-        end_date=end_date,
     )
     return {"data": stats, "message": "success", "code": 200}
 
