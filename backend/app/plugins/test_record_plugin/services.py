@@ -153,20 +153,10 @@ async def update_test_record(
         return "测试记录不存在"
 
     update_data = record.model_dump(exclude_unset=True)
-    if "analyze_attach" in update_data:
-        incoming_attach = update_data.pop("analyze_attach")
-        if db_record.analyze_attach:
-            existing_paths = list(db_record.analyze_attach)
-            for path in incoming_attach:
-                if path not in existing_paths:
-                    existing_paths.append(path)
-            db_record.analyze_attach = existing_paths
-        else:
-            db_record.analyze_attach = incoming_attach
-        flag_modified(db_record, "analyze_attach")
-
     for key, value in update_data.items():
         setattr(db_record, key, value)
+        if key == "analyze_attach":
+            flag_modified(db_record, "analyze_attach")
 
     if files and files[0].filename:
         saved_paths = await upload_files_general(

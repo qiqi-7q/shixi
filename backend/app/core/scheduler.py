@@ -42,8 +42,8 @@ scheduler.add_job(
     func=re_vm_task,
     replace_existing=True,
     trigger="cron",
-    hour="8",
-    minute="00",
+    hour="10",
+    minute="04",
 )
 
 # trigger = ("cron",)   #每天0点30分刷新一次车辆状态

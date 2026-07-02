@@ -8,9 +8,7 @@ class VehicleMonitor(Base):
     __tablename__ = "vehicle_monitors"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
-    vin_code = Column(
-        String(17), unique=True, index=True, nullable=False, comment="车辆VIN号"
-    )
+    vin_code = Column(String(17), index=True, nullable=False, comment="车辆VIN号")
     model = Column(String(50), comment="车型")
     group = Column(String(50), comment="组别")
     power = Column(Integer, comment="上电状态(0:未上电, 1:已上电)")
