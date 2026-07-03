@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="34ad20d3-07db-48ba-8d6d-1ac2d1f96b97" name="更改" comment="更新mian.py配置" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;customColor&quot;: &quot;&quot;,
+  &quot;associatedIndex&quot;: 0
+}</component>
+  <component name="ProjectId" id="3FCLlVOFtNZwijiS8nhGIKNGzm7" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
+    "Python.data_collection.executor": "Run",
+    "Python.dw.executor": "Run",
+    "Python.leapcloud_data.executor": "Run",
+    "Python.leapmotor_cloud_data.executor": "Run",
+    "Python.main.executor": "Run",
+    "Python.program_plan.executor": "Run",
+    "Python.scheduler.executor": "Run",
+    "Python.services.executor": "Debug",
+    "Python.test.executor": "Run",
+    "Python.vehicle_excel_import.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "deletionFromPopupRequiresConfirmation": "false",
+    "git-widget-placeholder": "backend__dev",
+    "last_opened_file_path": "D:/lpATMP/backend",
+    "settings.editor.selected.configurable": "preferences.pluginManager"
+  }
+}]]></component>
+  <component name="Push.Settings">
+    <force-push-targets>
+      <force-push-target remote-path="origin" branch="backend_dev" />
+    </force-push-targets>
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="D:\lpATMP\backend" />
+      <recent name="D:\lpATMP\backend\app\uploads" />
+      <recent name="D:\lpATMP\backend\app\plugins\vehicle_monitor_plugin" />
+      <recent name="D:\lpATMP\backend\uploads" />
+      <recent name="D:\lpATMP\backend\app\static" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="D:\lpATMP\backend" />
+      <recent name="D:\lpATMP\backend\app\uploads\project_plan" />
+      <recent name="D:\lpATMP\backend\app\uploads" />
+      <recent name="D:\lpATMP\backend\app\static" />
+    </key>
+  </component>
+  <component name="RedisHelper">
+    <option name="connections">
+      <list>
+        <ConnectionInfo>
+          <option name="clusterMode" value="false" />
+          <option name="global" value="false" />
+          <option name="id" value="d8bc7b88-8357-4e98-b847-9be5a17e8485" />
+          <option name="name" value="12" />
+          <option name="port" value="6379" />
+          <option name="sshTunnel" value="false" />
+          <option name="sslTls" value="false" />
+          <option name="sslTrustAllCertificates" value="false" />
+          <option name="sslVerifyHostname" value="true" />
+          <option name="tunnelPort" value="22" />
+          <option name="tunnelVerifyHostKey" value="true" />
+          <option name="url" value="localhost" />
+        </ConnectionInfo>
+      </list>
+    </option>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-f69e5c277ee4-cbfc7b97e6b2-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-252.27397.106" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="34ad20d3-07db-48ba-8d6d-1ac2d1f96b97" name="更改" comment="" />
+      <created>1781574257208</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1781574257208</updated>
+    </task>
+    <task id="LOCAL-00001" summary="更新mian.py配置">
+      <option name="closed" value="true" />
+      <created>1781777694437</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1781777694437</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
+    <servers />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName="nginx.conf" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="RECENT_FILTERS">
+      <map>
+        <entry key="Branch">
+          <value>
+            <list>
+              <RecentGroup>
+                <option name="FILTER_VALUES">
+                  <option value="giteeorigin/master" />
+                </option>
+              </RecentGroup>
+            </list>
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="origin/backend_dev" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="更新mian.py配置" />
+    <option name="LAST_COMMIT_MESSAGE" value="更新mian.py配置" />
+  </component>
+</project>
