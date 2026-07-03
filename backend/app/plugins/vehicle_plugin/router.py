@@ -21,38 +21,6 @@ async def get_vehicle_models(
     return {"data": model_list}
 
 
-@router.get("/fixsearch")
-async def get_vehicles_simple(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    vehicle_status: Optional[str] = None,
-    vin_code: Optional[str] = None,
-    group: Optional[str] = None,
-    model: Optional[str] = None,
-    test_status: Optional[str] = None,
-    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
-    sort_order: Optional[str] = Query(
-        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
-    ),
-    db: AsyncSession = Depends(get_db),
-):
-    """获取车辆列表（固定字段查询，支持排序）"""
-    vehicleData = await services.VehicleService.get_vehicles_simple(
-        db,
-        skip=skip,
-        limit=limit,
-        group=group,
-        vehicle_status=vehicle_status,
-        vin_code=vin_code,
-        model=model,
-        test_status=test_status,
-        sort_by=sort_by,
-        sort_order=sort_order,
-    )
-
-    return {"data": vehicleData, "message": "success", "code": 200}
-
-
 @router.get("/stats/overview")
 async def get_vehicle_overview(
     db: AsyncSession = Depends(get_db),
@@ -140,6 +108,10 @@ async def get_vehicles(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     conditions: Optional[List[dict]] = None,
+    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
+    sort_order: Optional[str] = Query(
+        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """获取车辆列表（高级查询）"""
@@ -216,6 +188,8 @@ async def get_vehicles(
         skip=skip,
         limit=limit,
         conditions=conditions,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     return {"data": vehicleData, "message": "success", "code": 200}
 
@@ -347,29 +321,6 @@ async def get_borrow_status_distribution(
 
 
 # ============= 列表路由 =============
-@borrow_router.get("/fixsearch")
-async def get_borrow_records_simple(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    model: Optional[str] = None,
-    vin_code: Optional[str] = None,
-    borrow_status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-    driver_name: Optional[str] = None,
-):
-    """获取借用记录列表"""
-    records = await services.BorrowService.get_borrow_records_simple(
-        db,
-        skip=skip,
-        limit=limit,
-        model=model,
-        vin_code=vin_code,
-        borrow_status=borrow_status,
-        driver_name=driver_name,
-    )
-    return {"data": records, "message": "success", "code": 200}
-
-
 # 借用记录时间字段
 BORROW_TIME_FIELDS = {"created_at", "updated_at", "borrow_time"}
 

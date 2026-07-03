@@ -19,6 +19,7 @@
 
 import re
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, List
 
 # ============================================================
@@ -97,6 +98,7 @@ def _make_sort_key(value: Any) -> tuple:
 
     类型分组编号：
       0: bool
+      # 小数模型里是用的Decimal类型，usage = Column(DECIMAL(10, 2), comment="使用率(%)")
       1: int / float
       2: datetime
       3: date
@@ -113,8 +115,12 @@ def _make_sort_key(value: Any) -> tuple:
     if isinstance(value, int):
         return (0, 1, value)
 
+    # 小数按数值大小排序
     if isinstance(value, float):
         return (0, 1, value)
+
+    if isinstance(value, Decimal):
+        return (0, 1, float(value))
 
     if isinstance(value, datetime):
         return (

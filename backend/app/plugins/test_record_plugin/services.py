@@ -44,6 +44,26 @@ async def create_test_record(
     return "success"
 
 
+async def get_field_options(db: AsyncSession) -> dict:
+    """获取 project、car_type、software_version 的去重列表，供前端下拉框使用"""
+
+    async def get_distinct(column):
+        stmt = (
+            select(func.distinct(column))
+            .where(column.isnot(None))
+            .where(column != "")
+            .order_by(column)
+        )
+        result = await db.execute(stmt)
+        return [row[0] for row in result.all()]
+
+    return {
+        "projects": await get_distinct(models.TestRecord.project),
+        "car_types": await get_distinct(models.TestRecord.car_type),
+        "software_versions": await get_distinct(models.TestRecord.software_version),
+    }
+
+
 async def get_test_records_adv(
     db: AsyncSession,
     skip: int = 0,

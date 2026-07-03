@@ -40,6 +40,24 @@ async def create_record(
         return {"message": result, "code": 400, "data": None}
 
 
+@router.get("/field_options")
+async def get_field_options(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取 project、car_type、software_version 的去重列表，
+    供前端 NAP 界面和新增测试记录表单的下拉框使用。
+    返回格式：
+    {
+        "projects": ["项目A", "项目B", ...],
+        "car_types": ["车型X", "车型Y", ...],
+        "software_versions": ["v1.0.0", "v2.0.0", ...]
+    }
+    """
+    options = await services.get_field_options(db)
+    return {"code": 200, "data": options, "message": "success"}
+
+
 # 2. 获取列表
 @router.get("/fixsearch")
 async def get_records(

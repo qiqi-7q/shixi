@@ -1,33 +1,12 @@
 from datetime import date
-import logging
-from logging.handlers import RotatingFileHandler
+
 from sqlalchemy import exists, select, update
-from app.core.config import settings
+
 from app.core.database import SessionLocal
 from app.plugins.vehicle_plugin import models
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-# 使用 settings.BASE_DIR 获取项目根目录
-# 配置日志记录器，将日志写入vehicle_scheduler.log文件,路径为logs/vehicle_scheduler.log
-if not logger.handlers:
-    # 确保日志目录存在
-    settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
-    log_file = settings.LOG_DIR / "vehicle_scheduler.log"
-
-    try:
-        # 单个日志最大10MB，最多保留10个归档日志
-        handler = RotatingFileHandler(
-            log_file, maxBytes=10 * 1024 * 1024, backupCount=10, encoding="utf-8"
-        )
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
-            )
-        )  # 设置日志格式，包含时间、接口名称(如，refresh_vehicle_status_task)、级别和信息
-        logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
-    except Exception as e:
-        logger.error(f"无法创建vehicle_scheduler.log日志文件，错误信息为: {e}")
+logger = get_logger(__name__, log_filename="vehicle_scheduler.log")
 
 
 async def re_vs_task():

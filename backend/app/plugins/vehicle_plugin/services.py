@@ -66,72 +66,12 @@ class VehicleService:
         return list(stmt.scalars().all())
 
     @staticmethod
-    async def get_vehicles_simple(
-        db: AsyncSession,
-        skip: int = 0,
-        limit: int = 100,
-        vehicle_status: Optional[str] = None,
-        test_status: Optional[str] = None,
-        group: Optional[str] = None,
-        vin_code: Optional[str] = None,
-        model: Optional[str] = None,
-        sort_by: Optional[str] = None,
-        sort_order: Optional[str] = None,
-    ) -> dict:
-        # 1. 统一收集筛选条件
-        filters = []
-
-        # 处理 vehicle_status（支持英文枚举名和中文值）
-        if vehicle_status:
-            filters.append(models.Vehicle.vehicle_status == vehicle_status)
-        if group:
-            filters.append(models.Vehicle.group == group)
-        if vin_code:
-            filters.append(models.Vehicle.vin_code.contains(vin_code))
-        if model:
-            filters.append(models.Vehicle.model.icontains(model))
-        if test_status:
-            filters.append(models.Vehicle.test_status == test_status)
-
-        # 2. 先查符合条件的总条数（不带分页）
-        count_stmt = select(func.count(models.Vehicle.id)).where(*filters)
-        total = await db.scalar(count_stmt) or 0
-
-        stmt = select(models.Vehicle).where(*filters)
-
-        if not sort_by:
-            data_stmt = (
-                stmt.order_by(models.Vehicle.id.desc()).offset(skip).limit(limit)
-            )
-
-            result = await db.execute(data_stmt)
-            data_list = list(result.scalars().all())
-
-        else:
-            result = await db.execute(stmt)
-            data_list = list(result.scalars().all())
-
-            # 排序处理：在数据查询完成后、返回响应前执行
-            if sort_by and data_list:
-                # 校验排序字段是否在车辆模型白名单中, 默认按 model 排序
-                if sort_by not in schemas.VEHICLE_WHITELIST:
-                    sort_by = "model"
-
-                # 校验排序方向，无效值默认使用 model 排序
-                valid_order = sort_order.lower() if sort_order else "asc"
-                if valid_order not in ("asc", "desc"):
-                    valid_order = "asc"
-                data_list = universal_sort(data_list, sort_by, valid_order)
-            # 分页处理：在数据查询完成后、返回响应前执行
-            data_list = data_list[skip : skip + limit]
-
-        return {"items": data_list, "total": total, "skip": skip, "limit": limit}
-
-    @staticmethod
     async def get_vehicles(
         db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
         conditions: Optional[List[dict]] = None,
     ) -> dict:
         stmt = select(models.Vehicle)
@@ -155,12 +95,29 @@ class VehicleService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        # 分页查询
-        stmt = stmt.offset(skip).limit(limit)
+        if not sort_by:
+            # 分页查询
+            stmt = stmt.order_by(models.Vehicle.id.desc()).offset(skip).limit(limit)
+            result = await db.execute(stmt)
+            data_list = list(result.scalars().all())
+        else:
+            result = await db.execute(stmt)
+            data_list = list(result.scalars().all())
 
-        result = await db.execute(stmt)
+            # 排序处理：在数据查询完成后、返回响应前执行
+            if sort_by and data_list:
+                # 校验排序字段是否在车辆监控数据白名单中，默认按 model 排序
+                if sort_by not in schemas.VEHICLE_WHITELIST:
+                    sort_by = "model"
+                # 校验排序方向：无效值默认使用model排序
+                valid_order = sort_order.lower() if sort_order else "asc"
+                if valid_order not in ("asc", "desc"):
+                    valid_order = "asc"
+                data_list = universal_sort(data_list, sort_by, valid_order)
+            # 分页处理：在数据查询完成后、返回响应前执行
+            data_list = data_list[skip : skip + limit]
         return {
-            "items": list(result.scalars().all()),
+            "items": data_list,
             "total": total,
             "skip": skip,
             "limit": limit,
@@ -475,45 +432,6 @@ class VehicleService:
 class BorrowService:
 
     @staticmethod
-    async def get_borrow_records_simple(
-        db: AsyncSession,
-        skip: int = 0,
-        limit: int = 100,
-        model: Optional[str] = None,
-        vin_code: Optional[str] = None,
-        borrow_status: Optional[str] = None,
-        driver_name: Optional[str] = None,
-    ) -> dict:
-        stmt = select(models.BorrowRecord)
-        if borrow_status:
-            stmt = stmt.where(models.BorrowRecord.borrow_status == borrow_status)
-        if model:
-            stmt = stmt.where(models.BorrowRecord.model.icontains(model))
-        if vin_code:
-            stmt = stmt.where(models.BorrowRecord.vin_code.contains(vin_code))
-        if driver_name:
-            stmt = stmt.where(models.BorrowRecord.driver_name.contains(driver_name))
-
-        # 统计总数
-        total_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await db.execute(total_stmt)
-        total = total_result.scalar_one()
-
-        # 借用记录倒序排序，先按照借用时间，再按照创建时间
-        stmt = stmt.order_by(
-            models.BorrowRecord.borrow_time.desc(),
-            models.BorrowRecord.created_at.desc(),
-        )
-        stmt = stmt.offset(skip).limit(limit)
-        result = await db.execute(stmt)
-        return {
-            "items": list(result.scalars().all()),
-            "total": total,
-            "skip": skip,
-            "limit": limit,
-        }
-
-    @staticmethod
     async def get_borrow_records(
         db: AsyncSession,
         skip: int = 0,
@@ -632,9 +550,23 @@ class BorrowService:
             return "借用时间不能为空"
         # 获取当前日期（只要年月日）
         current_time = date.today()
-        print("current", current_time, borrow.borrow_time)
+
         if borrow.borrow_time < current_time:
             return "借用时间必须是今天及之后的日期"
+
+        # 检查车辆是否存在
+        vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
+        if isinstance(vehicle, str):
+            return vehicle
+
+        if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
+            return "车辆正在维护，无法借用"
+
+        # 检查车辆的临牌时间是否到期
+        if vehicle.temp_plate_expire_date < current_time:
+            return "车辆临牌时间已过期，无法借用"
+        if vehicle.temp_plate_expire_date < borrow.borrow_time:
+            return "车辆临牌时间在借用时间前到期，无法借用"
 
         # 根据传回的司机的id获取内照有效期
         dr_card = await db.execute(
@@ -644,13 +576,6 @@ class BorrowService:
         if dr_card < borrow.borrow_time:
             return "借用时间内内照有效期过期，无法借用，请选择其他司机"
 
-        # 检查车辆是否存在
-        vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
-        print(vehicle)
-        if isinstance(vehicle, str):
-            return vehicle
-        if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
-            return "车辆正在维护，无法借用"
         # 事务
         try:
             # 更新车辆状态
@@ -695,6 +620,16 @@ class BorrowService:
             return "借用已完成，无法修改"
         if borrow_update.borrow_time < current_time:
             return "借用时间必须是今天及之后的日期"
+
+        # 检查车辆是否存在
+        vehicle = await db.get(models.Vehicle, record.vehicle_id)
+        if not vehicle:
+            return "车辆信息不存在"
+
+        # 检查车辆的临牌时间是否到期
+        if vehicle.temp_plate_expire_date < borrow_update.borrow_time:
+            return "车辆临牌时间在借用时间前到期，无法借用"
+
         update_data = borrow_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(record, field, value)

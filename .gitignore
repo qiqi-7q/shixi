@@ -1,56 +1,75 @@
-# Python
+# Python 字节码文件
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
 env/
-venv/
-.venv/
-ENV/
-*.egg-info/
-dist/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
 *.egg
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.sublime-workspace
-*.sublime-project
+# 虚拟环境
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Environment and secrets
+# 日志文件
+logs/
+*.log
+
+# 本地环境配置
 .env
 .env.local
-.env.*.local
-*.pem
-*.key
+.env.dev
+.env.prod
+settings_local.py
 
-# OS
+# IDE 配置
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+# VS Code
+.vscode/
+*.swp
+*.swo
+# 其他编辑器
+*.bak
+*.tmp
+
+# 系统文件
 .DS_Store
 Thumbs.db
-ehthumbs.db
-Desktop.ini
 
-# Test
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Logs
-*.log
-logs/
-
-# Database
-*.db
+# 数据库文件
 *.sqlite
+*.db
 *.sqlite3
 
-# Temporary files
-*.tmp
-*.temp
+# 缓存、临时文件
 .cache/
+tmp/
+temp/
+*.tmp
+
+# 打包/部署
+*.tar.gz
+*.zip
+docker-compose.override.yml

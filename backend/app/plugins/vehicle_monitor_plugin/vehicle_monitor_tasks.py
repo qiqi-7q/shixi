@@ -1,71 +1,118 @@
 import asyncio
-from datetime import date
-import logging
-from logging.handlers import RotatingFileHandler
+
 from sqlalchemy import exists, select, update
-from app.core.config import settings
+
 from app.core.database import SessionLocal
 from app.plugins.vehicle_plugin.models import Vehicle
 from app.plugins.vehicle_monitor_plugin.models import VehicleMonitor
 from app.utils.leapcloud_data import call_leapmotor_api
+from app.utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-# 使用 settings.BASE_DIR 获取项目根目录
-# 配置日志记录器，将日志写入vehicle_monitor_scheduler.log文件,路径为logs/vehicle_monitor_scheduler.log
-if not logger.handlers:
-    # 确保日志目录存在
-    settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
-    log_file = settings.LOG_DIR / "vehicle_monitor_scheduler.log"
-
-    try:
-        # 单个日志最大10MB，最多保留10个归档日志
-        handler = RotatingFileHandler(
-            log_file, maxBytes=10 * 1024 * 1024, backupCount=10, encoding="utf-8"
-        )
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
-            )
-        )  # 设置日志格式，包含时间、接口名称(如，refresh_vehicle_status_task)、级别和信息
-        logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
-    except Exception as e:
-        logger.error(f"无法创建vehicle_monitor.log日志文件，错误信息为: {e}")
+logger = get_logger(__name__, log_filename="vehicle_monitor_scheduler.log")
 
 
-BATCH_SIZE = 60
 MAX_RETRIES = 3
 BASE_DELAY = 2
 
 
-async def retry_failed_vins(failed_vins, config_key, api_name):
+async def _retry_batch(failed_vins, config_key, api_name):
+    """
+    批量重试剩余失败的 VIN。
+    每轮把整个失败集合一起调 call_leapmotor_api，利用其内部的并发 + 连接池限流；
+    本轮成功后只对仍未成功的做下一轮退避重试。
+    """
+    if not failed_vins:
+        return {}, []
+
     retry_results = {}
-    still_failed = []
+    for attempt in range(1, MAX_RETRIES + 1):
+        delay = BASE_DELAY * (2 ** (attempt - 1))
+        logger.info(
+            f"重试 {api_name} 第 {attempt}/{MAX_RETRIES} 次，"
+            f"剩 {len(failed_vins)} 个VIN，等待 {delay}s"
+        )
+        # 等待指定时间
+        await asyncio.sleep(delay)
 
-    for vin in failed_vins:
-        success = False
-        for attempt in range(1, MAX_RETRIES + 1):
-            delay = BASE_DELAY * (2 ** (attempt - 1))
-            logger.info(
-                f"重试 {api_name} VIN={vin}，第 {attempt}/{MAX_RETRIES} 次，等待 {delay}s"
-            )
-            # 等待指定时间
-            await asyncio.sleep(delay)
+        result, fail = await call_leapmotor_api(failed_vins, config_key=config_key)
+        retry_results.update(result)
+        if not fail:
+            # 本轮全部成功，结束重试
+            return retry_results, []
+        # 缩小本轮失败集合，下一轮只对仍未成功的重试
+        failed_vins = fail
 
-            result, _ = call_leapmotor_api([vin], config_key=config_key)
-            if vin in result:
-                retry_results[vin] = result[vin]
-                logger.info(f"重试 {api_name} VIN={vin} 成功")
-                success = True
-                break
-            else:
-                logger.warning(f"重试 {api_name} VIN={vin} 第 {attempt} 次失败")
+    logger.error(
+        f"重试 {api_name} 全部 {MAX_RETRIES} 次后仍有 {len(failed_vins)} 个VIN失败。"
+    )
+    return retry_results, failed_vins
 
-        if not success:
-            still_failed.append(vin)
-            logger.error(f"重试 {api_name} VIN={vin} 全部 {MAX_RETRIES} 次失败，已放弃")
 
-    return retry_results, still_failed
+async def retry_failed_vins(failed_vins, config_key, api_name):
+    """批量重试所有失败 VIN（包装层）"""
+    if not failed_vins:
+        return {}, []
+    return await _retry_batch(failed_vins, config_key, api_name)
+
+
+def _calculate_power_metrics(power_duration: int) -> tuple[float, float]:
+    """计算上电时长（小时）和使用率（%）"""
+    duration_seconds = power_duration or 0
+    duration_hour = duration_seconds / 3600 if duration_seconds else 0
+    usage = (duration_seconds / 28800) * 100 if duration_seconds else 0
+    return duration_hour, usage
+
+
+def _find_matching_value(
+    target_dt: str, data_list: list, key: str, default: int = 0
+) -> int:
+    """在数据列表中查找指定日期对应的值"""
+    if not data_list:
+        return default
+    return next((item[key] for item in data_list if item["dt"] == target_dt), default)
+
+
+def _create_vehicle_monitor_record(
+    vin: str, vin_data: dict, dt: str, power_duration: int, distance: int
+) -> VehicleMonitor:
+    """创建车辆监控记录"""
+    duration_hour, usage = _calculate_power_metrics(power_duration)
+    return VehicleMonitor(
+        vin_code=vin,
+        model=vin_data["model"],
+        group=vin_data["group"],
+        monitor_date=dt,
+        power_duration=duration_hour,
+        distance=distance,
+        usage=usage,
+    )
+
+
+def _process_duration_data(
+    vin: str, vin_data: dict, duration: list, mileage: list, add_list: list
+) -> None:
+    """处理有上电数据的情况"""
+    for dura in duration:
+        dt = dura["dt"]
+        power_duration = dura["on3_duration"] or 0
+        distance = _find_matching_value(dt, mileage, "drive_mileage")
+
+        add_list.append(
+            _create_vehicle_monitor_record(vin, vin_data, dt, power_duration, distance)
+        )
+
+
+def _process_mileage_only_data(
+    vin: str, vin_data: dict, mileage: list, add_list: list
+) -> None:
+    """处理仅有里程数据的情况"""
+    for mile in mileage:
+        dt = mile["dt"]
+        drive_mileage = mile["drive_mileage"] or 0
+
+        add_list.append(
+            _create_vehicle_monitor_record(vin, vin_data, dt, 0, drive_mileage)
+        )
 
 
 async def re_vm_task():
@@ -79,54 +126,38 @@ async def re_vm_task():
                     Vehicle.id.asc()
                 )
             )
+
             vehicles = [
                 {
-                    "vin_code": vin["vin_code"],
-                    "model": vin["model"],
-                    "group": vin["group"],
+                    "vin_code": row.vin_code,
+                    "model": row.model,
+                    "group": row.group,
                 }
-                for vin in vins.mappings().all()
+                for row in vins.all()
             ]
-
+            logger.info(f"车辆信息列表(vehicles)： {vehicles}")
             vin_list = [vehicle["vin_code"] for vehicle in vehicles]
 
             logger.info(f"从车辆表中获取到 {len(vin_list)} 个VIN码")
 
-            logger.info("开始分片批量调用LeapCloud API获取车辆监控数据")
-            duration_data = {}
-            mileage_data = {}
-            failed_duration_vins = []
-            failed_mileage_vins = []
-            # 计算总批次数
-            total_batches = (len(vin_list) + BATCH_SIZE - 1) // BATCH_SIZE
+            logger.info("开始调用LeapCloud API获取车辆监控数据")
 
-            # 分片处理，i为当前批次的起始索引，BATCH_SIZE为每个批次的VIN数量
-            for i in range(0, len(vin_list), BATCH_SIZE):
-                batch = vin_list[i : i + BATCH_SIZE]
-                batch_num = i // BATCH_SIZE + 1
-                logger.info(
-                    f"处理第 {batch_num}/{total_batches} 批，共 {len(batch)} 个VIN"
-                )
+            # duration 和 mileage 两个接口并发调用，aiohttp 内部连接池自动限流
+            duration_task = asyncio.create_task(
+                call_leapmotor_api(vin_list, config_key="duration")
+            )
+            mileage_task = asyncio.create_task(
+                call_leapmotor_api(vin_list, config_key="mileage")
+            )
+            duration_data, failed_duration_vins = await duration_task
+            mileage_data, failed_mileage_vins = await mileage_task
 
-                batch_duration, failed_duration = call_leapmotor_api(
-                    batch, config_key="duration"
+            if failed_duration_vins:
+                logger.warning(
+                    f"duration 数据获取失败 {len(failed_duration_vins)} 个VIN"
                 )
-                duration_data.update(batch_duration)
-                failed_duration_vins.extend(failed_duration)
-                if failed_duration:
-                    logger.warning(
-                        f"第 {batch_num} 批 duration 数据获取失败 {len(failed_duration)} 个VIN: {failed_duration}"
-                    )
-
-                batch_mileage, failed_mileage = call_leapmotor_api(
-                    batch, config_key="mileage"
-                )
-                mileage_data.update(batch_mileage)
-                failed_mileage_vins.extend(failed_mileage)
-                if failed_mileage:
-                    logger.warning(
-                        f"第 {batch_num} 批 mileage 数据获取失败 {len(failed_mileage)} 个VIN: {failed_mileage}"
-                    )
+            if failed_mileage_vins:
+                logger.warning(f"mileage 数据获取失败 {len(failed_mileage_vins)} 个VIN")
 
             # 对失败的 VIN 进行重试
             if failed_duration_vins:
@@ -166,35 +197,27 @@ async def re_vm_task():
 
             for vin in union_vins:
 
-                duration = duration_data.get(vin, None)
-                # [{'vin': 'LFZ63AC55TH000216', 'dt': '2026-06-28', 'on3_cnt': 2, 'on3_duration': 527.908}]}
-                power_duration = duration[0]["on3_duration"] if duration else 0
-                duration_hour = power_duration / 3600 if power_duration else 0
-                usage = min(
-                    (power_duration / 28800) * 100 if power_duration else 0, 100
-                )
+                duration = duration_data.get(
+                    vin, None
+                )  # [{'dt': '2026-06-23','on3_duration': 527.794}，{'dt': '2026-07-01','on3_duration': 527.794}]
+                mileage = mileage_data.get(
+                    vin, None
+                )  # [{'dt': '2026-06-24', 'drive_mileage': 4.7},{'dt': '2026-07-01', 'drive_mileage': 11.8}}]
 
-                mileage = mileage_data.get(vin, None)
-                # [{'vin': 'LFZ93AA94TD000265', 'dt': '2026-06-28', 'drive_mileage': 45.0}]
-                distance = mileage[0]["drive_mileage"] if mileage else 0
-                monitor_date = duration[0]["dt"] if duration else mileage[0]["dt"]
+                vin_data = next(
+                    (ve for ve in vehicles if ve["vin_code"] == vin)
+                )  # 获取vin对应的车辆信息
 
-                vin_data = next((ve for ve in vehicles if ve["vin_code"] == vin))
+                if duration:
+                    _process_duration_data(vin, vin_data, duration, mileage, add_list)
 
-                add_list.append(
-                    VehicleMonitor(
-                        vin_code=vin,
-                        model=vin_data["model"],
-                        group=vin_data["group"],
-                        monitor_date=monitor_date,
-                        power_duration=duration_hour,
-                        distance=distance,
-                        usage=usage,
-                    )
-                )
+                if mileage and duration is None:
+                    _process_mileage_only_data(vin, vin_data, mileage, add_list)
 
             db.add_all(add_list)
             await db.commit()
             logger.info("车辆监控数据写入数据库完成")
     except Exception as ex:
-        logger.error(f"刷新车辆监控数据时出错，错误信息为: {ex}")
+        logger.error(
+            f"刷新车辆监控数据时出错，错误信息为:{ex.__traceback__.tb_lineno}:{ex}"
+        )

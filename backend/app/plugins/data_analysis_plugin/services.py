@@ -2,7 +2,7 @@ from typing import Optional
 
 from app.plugins.test_miles_plugin.models import TestMiles
 from fastapi import Depends, Query
-from sqlalchemy import func, select, delete
+from sqlalchemy import case, func, select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -343,12 +343,18 @@ class DataAnalysis:
         if not funcMode:
             return "功能不能为空"
 
+        # version是否是多版本
+        if "," in version:
+            version = [v.strip() for v in version.split(",") if v.strip()]
+        else:
+            version = [version]
+
         # 查询测试记录
         test_rec = await db.execute(
             select(TestRecord).where(
                 TestRecord.project == project,
                 TestRecord.car_type == model,
-                TestRecord.software_version == version,
+                TestRecord.software_version.in_(version),
                 TestRecord.function_mode == funcMode,
             )
         )
@@ -362,7 +368,7 @@ class DataAnalysis:
             .distinct()
             .where(
                 TestRecord.project == project,
-                TestRecord.software_version == version,
+                TestRecord.software_version.in_(version),
                 TestRecord.function_mode == funcMode,
             )
         )
@@ -374,10 +380,10 @@ class DataAnalysis:
 
         # 查询里程数据（按版本对应的VIN码过滤，不区分车型）
         test_miles = await db.execute(
-            select(TestMiles).where(
+            select(TestMiles.mileage).where(
                 TestMiles.is_kpi == True,
                 TestMiles.project == project,
-                TestMiles.test_version == version,
+                TestMiles.test_version.in_(version),
                 TestMiles.test_function == funcMode,
                 TestMiles.vin_code.in_(vehicle_vins),
             )
@@ -388,7 +394,7 @@ class DataAnalysis:
             return "无测试里程数据"
 
         # 基础统计值
-        total_test_miles = sum(rec.mileage for rec in test_miles_records)
+        total_test_miles = sum(test_miles_records)
         print(f"总测试里程:", total_test_miles)
 
         # 统计主表部分数据
@@ -639,28 +645,6 @@ class DataAnalysis:
         db: AsyncSession, project: str, model: str, version: str, funcMode: str
     ):
         try:
-            stmt = select(KpiMain).where(
-                KpiMain.project == project,
-                KpiMain.carModel == model,
-                KpiMain.version == version,
-                KpiMain.funcMode == funcMode,
-            )
-            exists = await db.scalar(stmt)
-            if exists:
-                # 覆盖更新：先删除关联数据
-                module_stmt = select(KpiModule).where(KpiModule.main_id == exists.id)
-                module_exists = await db.scalar(module_stmt)
-                if module_exists:
-                    # 删除 kpi_item 关联数据
-                    await db.execute(
-                        delete(KpiItem).where(KpiItem.module_id == module_exists.id)
-                    )
-                    # 删除 kpi_module 数据
-                    await db.delete(module_exists)
-                # 删除 kpi_main 数据
-                await db.delete(exists)
-                await db.flush()
-
             save_data = await DataAnalysis.need_analysis_data(
                 db=db, project=project, model=model, version=version, funcMode=funcMode
             )
@@ -680,6 +664,74 @@ class DataAnalysis:
                 len(kpis) == len(counts) == len(MPIData) == len(score_r) == len(score_w)
             ):
                 return "KPI各组数据长度不匹配，禁止入库"
+
+            stmt = select(KpiMain).where(
+                KpiMain.project == project,
+                KpiMain.carModel == model,
+                KpiMain.version == version,
+                KpiMain.funcMode == funcMode,
+            )
+            exists = await db.scalar(stmt)
+            if exists:
+                # 同时修改KpiMain、KpiModule、KpiItem三张表的数据
+                update_kpimain = (
+                    update(KpiMain)
+                    .where(
+                        KpiMain.project == project,
+                        KpiMain.carModel == model,
+                        KpiMain.version == version,
+                        KpiMain.funcMode == funcMode,
+                    )
+                    .values(
+                        kpiMileage=mainData["kpiMileage"],
+                        totalScore=total["total_s_2"],
+                    )
+                )
+                await db.execute(update_kpimain)
+                update_kpimoudle = (
+                    update(KpiModule)
+                    .where(
+                        KpiModule.main_id == exists.id,
+                    )
+                    .values(
+                        reliability=module_s["reliability_s"],
+                        regulationsSafety=module_s["regulationsSafety_s"],
+                        comfort=module_s["comfort_s"],
+                        usability=module_s["usability_s"],
+                    )
+                )
+
+                await db.execute(update_kpimoudle)
+                module_stmt = select(KpiModule).where(KpiModule.main_id == exists.id)
+                module_exists = await db.scalar(module_stmt)
+                if module_exists:
+                    # 拼接case表达式，单条SQL完成全部kpi更新
+                    case_count = []
+                    case_mpi = []
+                    case_raw = []
+                    case_kpi = []
+                    for kpi in kpis:
+                        case_count.append((KpiItem.KPIType == kpi, counts[kpi]))
+                        case_mpi.append((KpiItem.KPIType == kpi, MPIData[kpi]))
+                        case_raw.append((KpiItem.KPIType == kpi, score_r[kpi]))
+                        case_kpi.append((KpiItem.KPIType == kpi, score_w[kpi]))
+
+                    update_stmt = (
+                        update(KpiItem)
+                        .where(
+                            KpiItem.module_id == module_exists.id,
+                            KpiItem.KPIType.in_(kpis),
+                        )
+                        .values(
+                            KPICount=case(*case_count, else_=KpiItem.KPICount),
+                            MPI=case(*case_mpi, else_=KpiItem.MPI),
+                            RawScore=case(*case_raw, else_=KpiItem.RawScore),
+                            KPIScore=case(*case_kpi, else_=KpiItem.KPIScore),
+                        )
+                    )
+                    await db.execute(update_stmt)
+                await db.commit()
+                return "success"
 
             main_data = KpiMain(
                 project=project,

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 
+from app.core.aiohttp_client import close_session
 from app.core.config import settings
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
@@ -59,9 +60,10 @@ async def lifespan(app: FastAPI):
 
     yield
     # 关闭时执行
-    stop_scheduler()
     print("Shutting down...")
+    stop_scheduler()
     await redisserve.close_conn()
+    await close_session()
 
 
 app = FastAPI(
@@ -116,7 +118,3 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
-
-
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="10.192.183.125", port=8000)

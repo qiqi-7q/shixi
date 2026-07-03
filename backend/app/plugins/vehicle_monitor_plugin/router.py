@@ -10,29 +10,6 @@ from app.plugins.vehicle_monitor_plugin import schemas, services
 router = APIRouter()
 
 
-# 2. 获取列表
-# @router.get("/fixsearch")
-# async def get_monitors(
-#     skip: int = 0,
-#     limit: int = 100,
-#     db: AsyncSession = Depends(get_db),
-#     vin_code: Optional[str] = None,
-#     model: Optional[str] = None,
-#     start_date: Optional[date] = None,
-#     end_date: Optional[date] = None,
-# ):
-#     result = await services.VehicleMonitorService.get_vehicle_monitors(
-#         db,
-#         skip=skip,
-#         limit=limit,
-#         vin_code=vin_code,
-#         model=model,
-#         start_date=start_date,
-#         end_date=end_date,
-#     )
-#     return {"data": result, "message": "success", "code": 200}
-
-
 # 3. 获取单条详情
 @router.get("/getmonitor/{monitor_id}")
 async def get_monitor(monitor_id: int, db: AsyncSession = Depends(get_db)):
@@ -52,6 +29,10 @@ async def get_vehicle_monitors(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     conditions: Optional[List[dict]] = None,
+    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
+    sort_order: Optional[str] = Query(
+        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """获取车辆监控记录列表（高级查询）
@@ -135,6 +116,8 @@ async def get_vehicle_monitors(
         skip=skip,
         limit=limit,
         conditions=conditions,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
     return {"data": vehicleMonitorData, "message": "success", "code": 200}
 
@@ -174,15 +157,36 @@ async def get_groups(
     return {"data": result, "message": "success", "code": 200}
 
 
-@router.get("/usages/{monitor_date}")
-async def get_usages(monitor_date: date, db: AsyncSession = Depends(get_db)):
-    """获取所选择日期的所有记录的使用率和时长"""
-    result = await services.VehicleMonitorService.get_usages(db, monitor_date)
+@router.get("/getusages")
+async def get_usages(
+    models: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """选定多车型、时间范围，根据VIN统计单车的平均使用率"""
+    result = await services.VehicleMonitorService.get_usages(
+        db, models, start_date, end_date
+    )
     return {"data": result, "message": "success", "code": 200}
 
 
-@router.get("/distences/{monitor_date}")
-async def get_distences(monitor_date: date, db: AsyncSession = Depends(get_db)):
-    """获取所选择日期的所有记录的行驶里程"""
-    result = await services.VehicleMonitorService.get_distences(db, monitor_date)
+@router.get("/getdistences")
+async def get_distences(
+    models: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """选定多车型、时间范围，根据VIN统计单车的平均行驶里程"""
+    result = await services.VehicleMonitorService.get_distences(
+        db, models, start_date, end_date
+    )
+    return {"data": result, "message": "success", "code": 200}
+
+
+@router.get("/getvin")
+async def get_vin(db: AsyncSession = Depends(get_db)):
+    """获取出现次数大于等于2次的VIN码列表"""
+    result = await services.VehicleMonitorService.get_vin(db)
     return {"data": result, "message": "success", "code": 200}
