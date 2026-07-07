@@ -74,4 +74,4 @@ temp/
 *.zip
 docker-compose.override.yml
 
-alembic/versions/
+versions/
