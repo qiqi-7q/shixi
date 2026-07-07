@@ -117,6 +117,3 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
-
-# if __name__ == "__main__":
-#     uvicorn.run("app.main:app",host=settings.SERVER_HOST, port=settings.SERVER_PORT)
