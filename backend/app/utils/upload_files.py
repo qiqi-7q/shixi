@@ -157,6 +157,7 @@ async def upload_files_general(
     """
     import re
 
+    # 构建存储路径前缀，测试环境存储在test目录下，前缀为test
     prefix = f"test/{table_name}_files/{record_id}"
 
     try:
