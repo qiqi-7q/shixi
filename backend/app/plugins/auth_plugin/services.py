@@ -41,7 +41,7 @@ class AuthService:
         user = result.scalar_one_or_none()
         if not user:
             return False
-        if not AuthService.verify_password(password, user.hashed_password):
+        if not AuthService.verify_password(password, user.password):
             return False
         return user
 
@@ -74,7 +74,7 @@ class AuthService:
                 username=user.username,
                 email=user.email,
                 full_name=user.full_name,
-                hashed_password=AuthService.get_password_hash(user.password),
+                password=AuthService.get_password_hash(user.password),
                 role=models.UserRole.USER.value
             )
             db.add(db_user)
@@ -218,7 +218,7 @@ class AuthService:
                 username=user.username,
                 email=user.email,
                 full_name=user.full_name,
-                hashed_password=AuthService.get_password_hash(user.password),
+                password=AuthService.get_password_hash(user.password),
                 role=user.role.value if user.role else models.UserRole.USER.value,
             )
             db.add(db_user)
@@ -258,7 +258,7 @@ class AuthService:
                 detail="User not found"
             )
 
-        user.hashed_password = new_password
+        user.password = new_password
         await db.commit()
         await db.refresh(user)
         return user

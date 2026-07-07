@@ -10,6 +10,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
 from app.plugins.vehicle_monitor_plugin import models, schemas
+from app.plugins.vehicle_plugin.models import Vehicle
 from app.utils.all_orderby import universal_sort
 from app.utils.build_condition import build_condition
 
@@ -100,9 +101,7 @@ class VehicleMonitorService:
         db: AsyncSession,
     ):
         stmt = await db.execute(
-            select(models.VehicleMonitor.vin_code).where(
-                models.VehicleMonitor.is_del == 0,
-            ).distinct()
+            select(Vehicle.vin_code).distinct()
         )
         return list(stmt.scalars().all())
 

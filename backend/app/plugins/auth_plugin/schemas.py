@@ -54,7 +54,7 @@ class UserAdminCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     """更新用户信息"""
-    hashed_password:Optional[str] = None
+    password: Optional[str] = None
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
     role: Optional[UserRole] = None

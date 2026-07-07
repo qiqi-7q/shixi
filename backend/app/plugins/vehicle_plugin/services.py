@@ -781,7 +781,11 @@ class VehicleStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.icontains(model))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.Vehicle.model.in_(values))
+            else:
+                filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
             filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
@@ -870,7 +874,11 @@ class VehicleStatsService:
         # 1. 构建车辆筛选条件
         vehicle_filters = []
         if model:
-            vehicle_filters.append(models.Vehicle.model.icontains(model))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                vehicle_filters.append(models.Vehicle.model.in_(values))
+            else:
+                vehicle_filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
             vehicle_filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
@@ -986,7 +994,11 @@ class VehicleStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.icontains(model))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.Vehicle.model.in_(values))
+            else:
+                filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
             filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
@@ -1044,7 +1056,11 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.icontains(model))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.BorrowRecord.model.in_(values))
+            else:
+                filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
             filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
@@ -1112,14 +1128,18 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.icontains(model))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.BorrowRecord.model.in_(values))
+            else:
+                filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
             filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
             filters.append(models.BorrowRecord.driver_name.icontains(driver_name))
         if borrow_status:
             filters.append(models.BorrowRecord.borrow_status == borrow_status)
-
+        print("filters:", filters)
         stmt = select(
             models.BorrowRecord.borrow_status.label("status"),
             func.count(models.BorrowRecord.id).label("count"),

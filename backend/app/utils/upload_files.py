@@ -273,14 +273,27 @@ async def preview_file(
     key: str,
     # current_user: User = Depends(get_current_user)
 ):
-    # 前端会返回[f"{bucket},{object_name}",f"{bucket},{object_name}",f"{bucket},{object_name}"]结构的数据
-    stream = None
     try:
-        obj_stat = minioserve.client.stat_object(bucket,key )
-        stream = minioserve.client.get_object(bucket, key)
-        return StreamingResponse(content=stream, media_type=obj_stat.content_type)
+        # 1. 将同步minio操作丢到线程池，不阻塞async事件循环
+        obj_stat = await asyncio.to_thread(minioserve.client.stat_object, bucket, key)
+        stream = await asyncio.to_thread(minioserve.client.get_object, bucket, key)
     except S3Error:
         return {"message": "文件不存在", "code": 404, "data": None}
-    finally:
-        if stream is not None:
-            stream.close()
+
+    # 封装同步流为异步生成器，分片读取，避免一次性加载全部文件
+    async def file_iterator():
+        try:
+            # 分片读取，每次64KB
+            while chunk := await asyncio.to_thread(stream.read, 65536):
+                yield chunk
+        finally:
+            # 流读取完毕后再关闭，不会提前释放
+            await asyncio.to_thread(stream.close)
+
+    # 兜底媒体类型，防止content_type为空导致图片不渲染
+    media_type = obj_stat.content_type or "image/png"
+
+    return StreamingResponse(
+        content=file_iterator(),
+        media_type=media_type
+    )

@@ -41,7 +41,7 @@ class MinioService:
                 length=len(file_data),
                 content_type=content_type,
             )
-            return f"http://{settings.MINIO_HOST}:{settings.MINIO_API_PORT}/{bucket}/{object_name}"
+            return f"http://{settings.MINIO_HOST}:{settings.MINIO_WEB_PORT}/{bucket}/{object_name}"
         except S3Error as e:
             raise Exception(f"MinIO上传失败: {str(e)}")
 

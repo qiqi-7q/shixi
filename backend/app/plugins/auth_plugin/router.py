@@ -341,7 +341,7 @@ async def update_password(
 
     # 验证旧密码
     if not services.AuthService.verify_password(
-        password_update.old_password, current_user.hashed_password
+        password_update.old_password, current_user.password
     ):
         return {"code": 400, "message": "Incorrect old password", "data": None}
 
@@ -368,7 +368,7 @@ async def forget_password(
     await send_text_email(
         to_email=current_user.email,
         subject="忘记密码邮件",
-        body=f"您的新密码是{current_user.hashed_password}",
+        body=f"您的新密码是{current_user.password}",
     )
     return {
         "message": "Password has been sent to your email address",
