@@ -32,9 +32,9 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "test_record", "app.plugins.test_record_plugin.plugin"
     )
-    await plugin_manager.register_plugin(
-        "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
-    )
+    # await plugin_manager.register_plugin(
+    #     "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
+    # )
     await plugin_manager.register_plugin(
         "test_route", "app.plugins.test_route_plugin.plugin"
     )
@@ -45,15 +45,15 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "test_miles", "app.plugins.test_miles_plugin.plugin"
     )
-    await plugin_manager.register_plugin(
-        "test_task", "app.plugins.test_task_plugin.plugin"
-    )
+    # await plugin_manager.register_plugin(
+    #     "test_task", "app.plugins.test_task_plugin.plugin"
+    # )
     await plugin_manager.register_plugin(
         "data_analysis", "app.plugins.data_analysis_plugin.plugin"
     )
-    await plugin_manager.register_plugin(
-        "project_plan", "app.plugins.project_plan_plugin.plugin"
-    )
+    # await plugin_manager.register_plugin(
+    #     "project_plan", "app.plugins.project_plan_plugin.plugin"
+    # )
     await plugin_manager.register_plugin(
         "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
     )
