@@ -54,7 +54,7 @@ async def call_leapmotor_api(vin_list, config_key="mileage"):
 
     # 1. 计算时间范围：过去一天
     now = date.today()
-    two_days_ago = now - timedelta(days=5)
+    two_days_ago = now - timedelta(days=1)
     dt_range = f"{two_days_ago},{now}"
 
     tasks = [_fetch_one_vin(url, service_key, dt_range, vin) for vin in vin_list]

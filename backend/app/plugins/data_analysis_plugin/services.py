@@ -927,12 +927,17 @@ class DataAnalysis:
             if not module_exists:
                 return "未找到对应的KPI模块记录"
 
+            if "," in version:
+                version = [v.strip() for v in version.split(",") if v.strip()]
+            else:
+                version = [version]
+
             # 查询测试记录获取其他KPI统计
             test_rec = await db.execute(
                 select(TestRecord).where(
                     TestRecord.project == project,
                     TestRecord.car_type == model,
-                    TestRecord.software_version == version,
+                    TestRecord.software_version.in_(version),
                     TestRecord.function_mode == funcMode,
                 )
             )
@@ -944,7 +949,7 @@ class DataAnalysis:
                 .distinct()
                 .where(
                     TestRecord.project == project,
-                    TestRecord.software_version == version,
+                    TestRecord.software_version.in_(version),
                     TestRecord.function_mode == funcMode,
                 )
             )
@@ -952,16 +957,17 @@ class DataAnalysis:
             vehicle_vins = [row[0] for row in test_record_vin_result.all()]
 
             test_miles = await db.execute(
-                select(TestMiles).where(
+                select(TestMiles.mileage).where(
                     TestMiles.is_kpi == True,
                     TestMiles.project == project,
-                    TestMiles.test_version == version,
+                    TestMiles.test_version.in_(version),
                     TestMiles.test_function == funcMode,
-                    TestMiles.vin_code.in_(vehicle_vins) if vehicle_vins else True,
+                    TestMiles.vin_code.in_(vehicle_vins),
                 )
             )
             test_miles_records = list(test_miles.scalars().all())
-            total_test_miles = sum(rec.mileage for rec in test_miles_records)
+            # 基础统计值
+            total_test_miles = sum(test_miles_records)
 
             # 统计KPI次数
             kpi_stat = DataAnalysis.kpi_times_count(total_test_miles, test_records)

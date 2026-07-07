@@ -71,6 +71,15 @@ class Settings(BaseSettings):
     )
     MILEAGE_SERVICE_KEY: str = "3J5FlzV0T132zOW"
 
+    # MinIO配置
+    MINIO_URL:str = "http://10.192.8.193:8011/browser/lpatmp/test"
+    MINIO_HOST:str = "10.192.8.193"
+    MINIO_WEB_PORT:int = 8011
+    MINIO_API_PORT:int = 8010
+    MINIO_ROOT_USER:str = "minioadmin"
+    MINIO_ROOT_PASSWORD:str = "MinIO.123456"
+    MINIO_BUCKET: str = "lpatmp"
+
     # 高级搜索配置
     ADVANCED_OPERATORS_MAP: dict = {
         # 高级搜索支持的操作符（使用 SQLAlchemy 正确语法）

@@ -102,7 +102,7 @@ class VehicleMonitorService:
         stmt = await db.execute(
             select(models.VehicleMonitor.vin_code).where(
                 models.VehicleMonitor.is_del == 0,
-            )
+            ).distinct()
         )
         return list(stmt.scalars().all())
 

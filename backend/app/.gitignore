@@ -33,7 +33,7 @@ logs/
 *.log
 
 # 本地环境配置
-.env
+
 .env.local
 .env.dev
 .env.prod
@@ -73,3 +73,8 @@ temp/
 *.tar.gz
 *.zip
 docker-compose.override.yml
+
+alembic.ini
+alembic/
+
+API文档.md

@@ -563,18 +563,20 @@ class BorrowService:
             return "车辆正在维护，无法借用"
 
         # 检查车辆的临牌时间是否到期
-        if vehicle.temp_plate_expire_date < current_time:
-            return "车辆临牌时间已过期，无法借用"
-        if vehicle.temp_plate_expire_date < borrow.borrow_time:
-            return "车辆临牌时间在借用时间前到期，无法借用"
+        if vehicle.temp_plate_expire_date:
+            if vehicle.temp_plate_expire_date < current_time:
+                return "车辆临牌时间已过期，无法借用"
+            if vehicle.temp_plate_expire_date < borrow.borrow_time:
+                return "车辆临牌时间在借用时间前到期，无法借用"
 
         # 根据传回的司机的id获取内照有效期
         dr_card = await db.execute(
             select(Employee.card_validity).where(Employee.id == borrow.driver_id)
         )
         dr_card = dr_card.scalar_one_or_none()
-        if dr_card < borrow.borrow_time:
-            return "借用时间内内照有效期过期，无法借用，请选择其他司机"
+        if dr_card:
+            if dr_card < borrow.borrow_time:
+                return "借用时间内内照有效期过期，无法借用，请选择其他司机"
 
         # 事务
         try:

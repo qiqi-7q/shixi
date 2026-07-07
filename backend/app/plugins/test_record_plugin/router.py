@@ -1,7 +1,7 @@
 import asyncio
 import io
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, Request, UploadFile, File
 from typing import Optional, List
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
@@ -61,6 +61,7 @@ async def get_field_options(
 # 2. 获取列表
 @router.get("/fixsearch")
 async def get_records(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
@@ -87,6 +88,8 @@ async def get_records(
         software_version=software_version,
         current_user=current_user,
     )
+
+
     return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
 
 
@@ -95,6 +98,7 @@ TIME_FIELDS = {"created_at", "updated_at", "problem_time"}
 
 @router.post("/advsearch")
 async def get_records_advanced(
+    request: Request,
     skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(100, ge=1, le=1000, description="每页返回的记录数"),
     conditions: Optional[List[dict]] = None,
@@ -177,6 +181,8 @@ async def get_records_advanced(
         limit=limit,
         conditions=conditions,
     )
+
+
     return {"data": records, "message": "success", "code": 200}
 
 

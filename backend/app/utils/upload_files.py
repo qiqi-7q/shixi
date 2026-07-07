@@ -1,9 +1,14 @@
+import asyncio
 from typing import Optional
 from typing import Optional, List
 from fastapi import APIRouter, File, Form, UploadFile
 import aiofiles
+from minio import S3Error
+from starlette.responses import StreamingResponse
+
 from app.core.config import settings
 from app.core.redis_client import redisserve
+from app.core.minio_client import minioserve
 
 # 上传目录
 TEMP_DIR = settings.UPLOAD_DIR / "temp"
@@ -140,7 +145,7 @@ async def upload_files_general(
     overwrite: bool = False,
 ):
     """
-    通用批量上传文件接口
+    通用批量上传文件接口（存储到MinIO）
     文件存储路径：{table_name}_files/{record_id}/{record_id}_01, {record_id}_02, ...
     :param files: UploadFile列表
     :param table_name: 表名，用于创建目录
@@ -148,54 +153,81 @@ async def upload_files_general(
     :param ALLOWED_EXT: 允许的文件扩展名集合
     :param start_index: 起始索引（仅在 overwrite=True 或目录为空时生效）
     :param overwrite: 是否覆盖所有旧文件并重新编号（True=从_01开始，False=从最大索引继续）
-    :return: 文件路径列表
+    :return: 文件URL列表
     """
     import re
 
-    upload_dir = settings.STATIC_DIR / f"{table_name}_files" / str(record_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    prefix = f"test/{table_name}_files/{record_id}"
 
-    if overwrite:
-        for old_file in upload_dir.iterdir():
-            if old_file.is_file():
-                old_file.unlink()
-        current_max_idx = start_index - 1
-    else:
-        current_max_idx = start_index - 1
-        pattern = re.compile(rf"^{record_id}_(\d{{2}})")
-        for existing_file in upload_dir.iterdir():
-            if existing_file.is_file():
-                match = pattern.match(existing_file.name)
+    try:
+        if overwrite:
+            objects = await asyncio.to_thread(minioserve.list_objects, prefix=prefix)
+            for obj in objects:
+                await asyncio.to_thread(minioserve.delete_file, obj.object_name)
+            current_max_idx = start_index - 1
+        else:
+            current_max_idx = start_index - 1
+            objects = await asyncio.to_thread(minioserve.list_objects, prefix=prefix)
+            pattern = re.compile(rf"^{prefix}/{record_id}_(\d{{2}})")
+            for obj in objects:
+                match = pattern.match(obj.object_name)
                 if match:
                     idx = int(match.group(1))
                     if idx > current_max_idx:
                         current_max_idx = idx
 
-    saved_paths = []
-    for offset, file in enumerate(files):
-        if not file or not file.filename:
-            continue
+        saved_paths = []
+        for offset, file in enumerate(files):
+            if not file or not file.filename:
+                continue
 
-        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-        if ALLOWED_EXT and "." + ext not in ALLOWED_EXT:
-            continue
+            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+            if ALLOWED_EXT and "." + ext not in ALLOWED_EXT:
+                continue
 
-        content = await file.read()
-        if not content:
-            continue
+            content = await file.read()
+            if not content:
+                continue
 
-        idx = current_max_idx + offset + 1
-        new_filename = (
-            f"{record_id}_{idx:02d}.{ext}" if ext else f"{record_id}_{idx:02d}"
-        )
-        file_path = upload_dir / new_filename
+            idx = current_max_idx + offset + 1
+            new_filename = (
+                f"{record_id}_{idx:02d}.{ext}" if ext else f"{record_id}_{idx:02d}"
+            )
+            object_name = f"{prefix}/{new_filename}"
 
-        with open(file_path, "wb") as f:
-            f.write(content)
+            content_type = get_content_type(ext)
+            url = await asyncio.to_thread(
+                minioserve.upload_file, content, object_name, content_type=content_type
+            )
 
-        saved_paths.append(f"/static/{table_name}_files/{record_id}/{new_filename}")
+            saved_paths.append(url)
 
-    return saved_paths
+        return saved_paths
+    except Exception as e:
+        raise Exception(f"文件上传到MinIO失败: {str(e)}")
+
+
+def get_content_type(ext: str) -> str:
+    content_types = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "webp": "image/webp",
+        "pdf": "application/pdf",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "txt": "text/plain",
+        "json": "application/json",
+        "xml": "application/xml",
+        "zip": "application/zip",
+        "rar": "application/x-rar-compressed",
+        "7z": "application/x-7z-compressed",
+    }
+    return content_types.get(ext, "application/octet-stream")
 
 
 @upload_router.post("/{table_name}/{record_id}")
@@ -231,3 +263,23 @@ async def upload_files_universal(
             "total_count": len(saved_paths),
         },
     }
+
+
+
+@upload_router.get("/preview")
+async def preview_file(
+    bucket: str,
+    key: str,
+    # current_user: User = Depends(get_current_user)
+):
+    # 前端会返回[f"{bucket},{object_name}",f"{bucket},{object_name}",f"{bucket},{object_name}"]结构的数据
+    stream = None
+    try:
+        obj_stat = minioserve.client.stat_object(bucket,key )
+        stream = minioserve.client.get_object(bucket, key)
+        return StreamingResponse(content=stream, media_type=obj_stat.content_type)
+    except S3Error:
+        return {"message": "文件不存在", "code": 404, "data": None}
+    finally:
+        if stream is not None:
+            stream.close()
