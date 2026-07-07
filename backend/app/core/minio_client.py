@@ -5,14 +5,12 @@ from minio.error import S3Error
 
 from app.core.config import settings
 
-import socket
-
 
 class MinioService:
 
     def __init__(self):
         self.client = Minio(
-            f"{settings.MINIO_HOST}:{settings.MINIO_API_PORT}",
+            endpoint=f"{settings.MINIO_HOST}:{settings.MINIO_API_PORT}",
             access_key=settings.MINIO_ROOT_USER,
             secret_key=settings.MINIO_ROOT_PASSWORD,
             secure=False,
@@ -41,7 +39,10 @@ class MinioService:
                 length=len(file_data),
                 content_type=content_type,
             )
-            return f"http://{settings.MINIO_HOST}:{settings.MINIO_WEB_PORT}/{bucket}/{object_name}"
+
+            # return f"http://{settings.SERVER_HOST}:{settings.SERVER_PORT}/api/upload/preview?bucket={bucket}/{object_name}"
+            return f"http://{settings.MINIO_HOST}:{settings.MINIO_API_PORT}/{bucket}/{object_name}"
+
         except S3Error as e:
             raise Exception(f"MinIO上传失败: {str(e)}")
 

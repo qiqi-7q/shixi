@@ -843,6 +843,9 @@ async def batch_export_records(
             # 如果是日期时间类型，转换为字符串格式
             elif isinstance(value, (datetime, date, time)):
                 record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
+            # 如果是列表，将其中元素转换为字符串格式（逗号分隔）
+            elif isinstance(value, list):
+                record_dict[cn_header] = ",".join(map(str, value))
             else:
                 record_dict[cn_header] = value
         record_dicts.append(record_dict)

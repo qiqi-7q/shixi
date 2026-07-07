@@ -99,7 +99,6 @@ settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 # settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # ========== 挂载静态文件 ==========
-# 访问地址：http://127.0.0.1:8000/static/xxx.png
 app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="static")
 
 # ========== 注册通用文件上传路由 ==========
@@ -119,5 +118,5 @@ async def root():
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
 
-if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="10.192.183.240", port=8000)
+# if __name__ == "__main__":
+#     uvicorn.run("app.main:app",host=settings.SERVER_HOST, port=settings.SERVER_PORT)

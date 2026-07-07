@@ -8,6 +8,11 @@ load_dotenv()
 
 
 class Settings(BaseSettings):
+
+    # 项目启动配置(.env中配置)
+    SERVER_HOST: str = "localhost"
+    SERVER_PORT: int = 8000
+
     # MySQL配置
     MYSQL_HOST: str = "localhost"
     MYSQL_PORT: int = 3306
@@ -15,7 +20,7 @@ class Settings(BaseSettings):
     MYSQL_PASSWORD: str = "shang"
     MYSQL_DATABASE: str = "data_platform_test"
 
-    # Redis配置s
+    # Redis配置
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://127.0.0.1"
@@ -24,7 +29,7 @@ class Settings(BaseSettings):
     # JWT配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2592000
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2592000  # 30天
 
     # 数据库连接池
     DB_POOL_SIZE: int = 10
@@ -72,13 +77,13 @@ class Settings(BaseSettings):
     MILEAGE_SERVICE_KEY: str = "3J5FlzV0T132zOW"
 
     # MinIO配置
-    MINIO_URL:str = "http://10.192.8.193:8011/browser/lpatmp/test"
     MINIO_HOST:str = "10.192.8.193"
     MINIO_WEB_PORT:int = 8011
     MINIO_API_PORT:int = 8010
     MINIO_ROOT_USER:str = "minioadmin"
     MINIO_ROOT_PASSWORD:str = "MinIO.123456"
     MINIO_BUCKET: str = "lpatmp"
+    MINIO_PATH: str   # .env 中配置
 
     # 高级搜索配置
     ADVANCED_OPERATORS_MAP: dict = {

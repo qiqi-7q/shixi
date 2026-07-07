@@ -74,7 +74,4 @@ temp/
 *.zip
 docker-compose.override.yml
 
-alembic.ini
-alembic/
-
-API文档.md
+alembic/versions/
