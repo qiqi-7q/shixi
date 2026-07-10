@@ -9,11 +9,13 @@ class RedisService:
 
     def __init__(self):
         self.redis_pool = ConnectionPool.from_url(
-            f"{settings.REDIS_URL}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
+            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB}",
             password=settings.REDIS_PASSWORD,
         )
         self.redis_client = Redis(
-            connection_pool=self.redis_pool, decode_responses=True, max_connections=30
+            connection_pool=self.redis_pool,
+            decode_responses=True,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
         )
 
     async def set_data(self, key: str, value: str, expire_seconds: int = 1800):

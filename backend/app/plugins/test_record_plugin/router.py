@@ -1,10 +1,8 @@
 import asyncio
 import io
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, Request, UploadFile, File
+from fastapi import Request
 from typing import Optional, List
-from datetime import datetime
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import xlsxwriter
@@ -292,34 +290,6 @@ async def batch_export(
 
     if not export_data:
         return {"message": "没有找到符合条件的数据", "code": 400, "data": None}
-
-    # # 创建Excel文件
-    # output = io.BytesIO()
-    # workbook = xlsxwriter.Workbook(output)
-    # worksheet = workbook.add_worksheet("测试记录")
-    #
-    # # 写入表头
-    # headers = export_data["headers"]
-    # for col, header in enumerate(headers):
-    #     worksheet.write(0, col, header)
-    #
-    # # 写入数据
-    # records = export_data["records"]
-    # for row, record in enumerate(records, start=1):
-    #     for col, header in enumerate(headers):
-    #         worksheet.write(row, col, record.get(header, ""))
-    #
-    # workbook.close()
-    # output.seek(0)
-    #
-    # # 返回Excel文件流
-    # return StreamingResponse(
-    #     output,
-    #     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    #     headers={
-    #         "Content-Disposition": "attachment; filename=test_records_export.xlsx"
-    #     },
-    # )
 
     # 限制最多同时3个导出任务
     EXPORT_SEM = asyncio.Semaphore(3)

@@ -1,17 +1,15 @@
-from io import BytesIO
 from typing import Dict, List, Optional, Set, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from fastapi import UploadFile
-from sqlalchemy import and_, delete, exists, or_, select
+from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.vehicle_plugin import models, schemas
 from app.plugins.employee_plugin.models import Employee, JobType
-from app.utils.build_condition import build_condition, find_enum_by_value
 
-from sqlalchemy import func
-from app.utils.all_orderby import universal_sort
+from app.utils.build_condition import ENUM_FIELD_MAP, build_condition, get_enum_value
+
 from app.utils.handle_excel_testrecord import (
     build_enum_lookup,
     generate_unique_key,
@@ -66,6 +64,24 @@ class VehicleService:
         return list(stmt.scalars().all())
 
     @staticmethod
+    async def model_distribution(db: AsyncSession):
+        """获取车型分布，返回所有车型及其车辆数量,按车辆数量降序排序"""
+        stmt = await db.execute(select(models.Vehicle.model, func.count(models.Vehicle.id).label("count")).group_by(models.Vehicle.model).order_by(func.count(models.Vehicle.id).desc()))
+        result = stmt.all()
+
+        if not result:
+            return []
+        model_dis = [
+            {
+                "model": record.model,
+                "count": record.count,
+            }
+            for record in result
+        ]
+
+        return model_dis
+
+    @staticmethod
     async def get_vehicles(
         db: AsyncSession,
         skip: int = 0,
@@ -95,27 +111,43 @@ class VehicleService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        if not sort_by:
-            # 分页查询
-            stmt = stmt.order_by(models.Vehicle.id.desc()).offset(skip).limit(limit)
-            result = await db.execute(stmt)
-            data_list = list(result.scalars().all())
-        else:
-            result = await db.execute(stmt)
-            data_list = list(result.scalars().all())
+        # 1. 前置统一处理排序参数，消除分支差异逻辑
+        # 默认排序字段、升降序
+        default_sort = "id"
+        default_desc = True
+        sort_expr = None
 
-            # 排序处理：在数据查询完成后、返回响应前执行
-            if sort_by and data_list:
-                # 校验排序字段是否在车辆监控数据白名单中，默认按 model 排序
-                if sort_by not in schemas.VEHICLE_WHITELIST:
-                    sort_by = "model"
-                # 校验排序方向：无效值默认使用model排序
-                valid_order = sort_order.lower() if sort_order else "asc"
-                if valid_order not in ("asc", "desc"):
-                    valid_order = "asc"
-                data_list = universal_sort(data_list, sort_by, valid_order)
-            # 分页处理：在数据查询完成后、返回响应前执行
-            data_list = data_list[skip : skip + limit]
+        # 处理空排序场景
+        if not sort_by:
+            sort_by = default_sort
+            is_desc = default_desc
+        else:
+            # 字段白名单校验
+            if sort_by not in schemas.VEHICLE_WHITELIST:
+                sort_by = "model"
+            # 校验排序方向
+            valid_order = sort_order.lower() if sort_order else "asc"
+            is_desc = valid_order == "desc" if valid_order in ("asc", "desc") else False
+
+        # 2. 统一构建排序表达式（消除if/else分页重复代码）
+        if sort_by in ENUM_FIELD_MAP:
+            # 枚举CASE WHEN排序
+            enum_cls = getattr(models, ENUM_FIELD_MAP[sort_by])
+            field_col = getattr(models.Vehicle, sort_by)
+            whens = [(field_col == m.value, i) for i, m in enumerate(enum_cls)]
+            sort_expr = case(*whens)
+        else:
+            # 普通字段原生排序
+            sort_expr = getattr(models.Vehicle, sort_by)
+
+        # 升降序统一处理
+        order_clause = sort_expr.desc() if is_desc else sort_expr.asc()
+        stmt = stmt.order_by(order_clause).offset(skip).limit(limit)
+
+        # 3. 查询逻辑全局只写一次，无重复
+        result = await db.execute(stmt)
+        data_list = list(result.scalars().all())
+
         return {
             "items": data_list,
             "total": total,
@@ -490,6 +522,7 @@ class BorrowService:
         record_id: int,
         vehicle_id: int,
     ) -> list[dict]:
+        """查询车辆已被借用的记录"""
         current_date = date.today()
         # 查询BorrowRecord数据库中，vehicle_id=borrow.vehicle_id,借用状态是borrowing或reserved，但除了当前记录外的借用记录，
         existing_borrows = await db.execute(
@@ -550,9 +583,11 @@ class BorrowService:
             return "借用时间不能为空"
         # 获取当前日期（只要年月日）
         current_time = date.today()
+        # 获取明天
+        tomorrow_time = current_time + timedelta(days=1)
 
-        if borrow.borrow_time < current_time:
-            return "借用时间必须是今天及之后的日期"
+        if borrow.borrow_time < current_time or borrow.borrow_time > tomorrow_time:
+            return "借用时间必须是今天或明天"
 
         # 检查车辆是否存在
         vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
@@ -564,8 +599,6 @@ class BorrowService:
 
         # 检查车辆的临牌时间是否到期
         if vehicle.temp_plate_expire_date:
-            if vehicle.temp_plate_expire_date < current_time:
-                return "车辆临牌时间已过期，无法借用"
             if vehicle.temp_plate_expire_date < borrow.borrow_time:
                 return "车辆临牌时间在借用时间前到期，无法借用"
 
@@ -577,6 +610,20 @@ class BorrowService:
         if dr_card:
             if dr_card < borrow.borrow_time:
                 return "借用时间内内照有效期过期，无法借用，请选择其他司机"
+
+        # 获取车辆在指定时间的借用次数
+        counts = await db.execute(
+            select(
+                func.count(models.BorrowRecord.id).label("count"),
+            )
+            .where(
+                models.BorrowRecord.vehicle_id == borrow.vehicle_id,
+                models.BorrowRecord.borrow_time == borrow.borrow_time,
+            )
+        )
+        counts = counts.scalar_one_or_none()
+        if counts and counts > 0:
+            return f"车辆在{borrow.borrow_time}已借用，无法再次借用"
 
         # 事务
         try:
@@ -884,7 +931,7 @@ class VehicleStatsService:
         if group:
             group_enum = getattr(
                 models.VehicleGroup, group, None
-            ) or find_enum_by_value(models.VehicleGroup, group)
+            ) or get_enum_value("VehicleGroup", group)
             if group_enum:
                 vehicle_filters.append(models.Vehicle.group == group_enum)
             else:
@@ -892,7 +939,7 @@ class VehicleStatsService:
         if vehicle_status:
             status_enum = getattr(
                 models.VehicleStatus, vehicle_status, None
-            ) or find_enum_by_value(models.VehicleStatus, vehicle_status)
+            ) or get_enum_value("VehicleStatus", vehicle_status)
             if status_enum:
                 vehicle_filters.append(models.Vehicle.vehicle_status == status_enum)
             else:
@@ -900,7 +947,7 @@ class VehicleStatsService:
         if test_status:
             test_enum = getattr(
                 models.TestStatus, test_status, None
-            ) or find_enum_by_value(models.TestStatus, test_status)
+            ) or get_enum_value("TestStatus", test_status)
             if test_enum:
                 vehicle_filters.append(models.Vehicle.test_status == test_enum)
             else:

@@ -1,3 +1,4 @@
+import time
 from datetime import date
 from typing import List, Optional
 
@@ -43,7 +44,7 @@ async def get_vehicle_monitors(
     - 时间字段只支持 between/not_between 操作符
     - 时间字段的值如果是纯日期，将自动添加 00:00:00 或 23:59:59
     """
-
+    start_time = time.time()
     if conditions:
         for cond in conditions:
             # 支持多种字段名格式
@@ -119,6 +120,8 @@ async def get_vehicle_monitors(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+    end_time = time.time()
+    print(f"{sort_by}:{sort_order},接口时间：",end_time-start_time)
     return {"data": vehicleMonitorData, "message": "success", "code": 200}
 
 
@@ -159,7 +162,7 @@ async def get_groups(
 
 @router.get("/getusages")
 async def get_usages(
-    models: str,
+    models: Optional[str] = None,
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     db: AsyncSession = Depends(get_db),

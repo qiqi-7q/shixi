@@ -1,17 +1,33 @@
 from typing import Any, Type
 
 from app.core.config import settings
-from app.plugins.vehicle_plugin import models
+from app.plugins.vehicle_plugin import models as vehicle_models
+from app.plugins.employee_plugin import models as employee_models
 
 # ========================高级搜索条件构建========================
 
+# 枚举字段映射表（模块级别，避免重复创建）
+ENUM_FIELD_MAP = {
+    "test_status": "TestStatus",
+    "vehicle_status": "VehicleStatus",
+    "group": "VehicleGroup",
+    "job_type":"JobType"
+}
 
-def find_enum_by_value(enum_class, value: str):
-    """根据值查找枚举成员（支持中文值查找）"""
-    for member in enum_class:
-        if member.value == value:
-            return member
-    return None
+# 枚举值 -> 枚举成员 反向查找表（模块级别，O(1) 查找）
+_ENUM_VALUE_CACHE: dict = {}
+for _field_name, _enum_class_name in ENUM_FIELD_MAP.items():
+    if hasattr(vehicle_models, _enum_class_name):
+        _enum_cls = getattr(vehicle_models, _enum_class_name)
+        _ENUM_VALUE_CACHE[_enum_class_name] = {m.value: m for m in _enum_cls}
+    elif hasattr(employee_models, _enum_class_name):
+        _enum_cls = getattr(employee_models, _enum_class_name)
+        _ENUM_VALUE_CACHE[_enum_class_name] = {m.value: m for m in _enum_cls}
+
+
+def get_enum_value(enum_class_name: str, value: str):
+    """从缓存中 O(1) 查找枚举值，不存在返回 None"""
+    return _ENUM_VALUE_CACHE.get(enum_class_name, {}).get(value)
 
 
 def check_comma_separated_in(field, operator: str, value: str):
@@ -32,27 +48,18 @@ def build_condition(model_class: Type, field_name: str, operator: str, value: An
         operator, settings.ADVANCED_OPERATORS_MAP["eq"]
     )
 
-    # 枚举字段映射表
-    ENUM_FIELD_MAP = {
-        "test_status": "TestStatus",
-        "vehicle_status": "VehicleStatus",
-        "group": "VehicleGroup",
-    }
-
     if field_name in ENUM_FIELD_MAP:
         # 多选支持：逗号分隔的值转为 IN/NOT IN 查询
         comma_result = check_comma_separated_in(field, operator, value)
         if comma_result is not None:
             return comma_result
-        # 单选：解析枚举值
+
+        # 单选：从缓存中 O(1) 查找枚举值
         enum_class_name = ENUM_FIELD_MAP[field_name]
-        if hasattr(models, enum_class_name):
-            enum_cls = getattr(models, enum_class_name)
-            enum_val = getattr(enum_cls, value, None) or find_enum_by_value(
-                enum_cls, value
-            )
-            if enum_val:
-                value = enum_val
+        enum_val = get_enum_value(enum_class_name, value)
+        if enum_val:
+            value = enum_val
+
     elif (
         operator in ("eq", "not_eq")
         and value is not None

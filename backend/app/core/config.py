@@ -4,7 +4,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 
 class Settings(BaseSettings):
@@ -20,12 +20,16 @@ class Settings(BaseSettings):
     MYSQL_PASSWORD: str = "shang"
     MYSQL_DATABASE: str = "data_platform_test"
 
+    # 是否开启数据库日志打印
+    DB_ECHO: bool = False
+    
     # Redis配置
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://127.0.0.1"
     REDIS_DB: int = 0
     REDIS_PASSWORD: Optional[str] = "shang"
+    REDIS_MAX_CONNECTIONS: int = 30
     # JWT配置
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
@@ -43,6 +47,9 @@ class Settings(BaseSettings):
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     # 日志目录
     LOG_DIR: Path = BASE_DIR / "logs"
+    
+    # 日志文件保留天数
+    BACKUPCOUNT: int = 7
 
     # 1. 邮箱配置（核心！根据你的邮箱修改）
     # 发件人邮箱
@@ -83,7 +90,7 @@ class Settings(BaseSettings):
     MINIO_ROOT_USER:str = "minioadmin"
     MINIO_ROOT_PASSWORD:str = "MinIO.123456"
     MINIO_BUCKET: str = "lpatmp"
-    MINIO_PATH: str   # .env 中配置
+    MINIO_PATH: str = "dev"  # .env 中配置
 
     # 高级搜索配置
     ADVANCED_OPERATORS_MAP: dict = {

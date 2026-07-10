@@ -7,9 +7,11 @@ from starlette.staticfiles import StaticFiles
 
 from app.core.aiohttp_client import close_session
 from app.core.config import settings
+from app.core.database import Base
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
 from app.core.scheduler import scheduler, stop_scheduler
+from app.utils.json_operator import init_model_meta_cache, labels_router
 from app.utils.upload_files import upload_router
 
 
@@ -58,6 +60,9 @@ async def lifespan(app: FastAPI):
         "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
     )
 
+    init_model_meta_cache(Base)
+    print("所有插件模型字段注释缓存初始化完成")
+
     yield
     # 关闭时执行
     print("Shutting down...")
@@ -104,6 +109,7 @@ app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="
 # ========== 注册通用文件上传路由 ==========
 app.include_router(upload_router, prefix="/api", tags=["通用文件上传"])
 
+app.include_router(labels_router, prefix="/api", tags=["模块标签操作"])
 
 @app.get("/")
 async def root():
@@ -117,3 +123,6 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
+
+# if __name__ == "__main__":
+#     uvicorn.run("app.main:app",host=settings.SERVER_HOST, port=settings.SERVER_PORT)

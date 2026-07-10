@@ -20,9 +20,9 @@ class Employee(Base):
     module_manager = Column(String(100), comment="模块负责人")
     name = Column(String(100), nullable=False, index=True, comment="姓名")
     job_type = Column(
-        SQLEnum(JobType, values_callable=lambda obj: [e.value for e in obj]),
+        SQLEnum(JobType, values_callable=lambda obj: [e.value for e in obj],native_enum=False,length=64),
         comment="岗位（司机/外协）",
-    )
+ )
     task = Column(String(100), comment="负责任务")
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
     updated_at = Column(

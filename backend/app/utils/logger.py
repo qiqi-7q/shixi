@@ -26,7 +26,7 @@ def get_logger(name: str, log_filename: str = "app.log") -> logging.Logger:
     try:
         # 按天切割日志，保留7天
         file_handler = TimedRotatingFileHandler(
-            log_file, when="midnight", interval=1, backupCount=7, encoding="utf-8"
+            log_file, when="midnight", interval=1, backupCount=settings.BACKUPCOUNT, encoding="utf-8"
         )
         # 统一日志格式
         log_formatter = logging.Formatter(

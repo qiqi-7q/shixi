@@ -1,3 +1,5 @@
+import time
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -28,6 +30,7 @@ async def get_employees_simple(
     db: AsyncSession = Depends(get_db),
 ):
     """获取员工列表（固定字段查询，支持排序）"""
+    start_time = time.time()
     employeeData = await services.get_employees_simple(
         db,
         skip=skip,
@@ -37,6 +40,8 @@ async def get_employees_simple(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+    end_time = time.time()
+    print(f"{sort_by}:{sort_order} 接口时间:",end_time-start_time)
 
     return {"data": employeeData, "message": "success", "code": 200}
 

@@ -35,7 +35,7 @@ class TestTask(Base):
     actual_mileage = Column(Float, comment="实际完成里程")
     task_achievement_rate = Column(Float, comment="任务达成率")
     
-    task_status = Column(Enum(*TaskStatus.values(), name='task_status_enum'), 
+    task_status = Column(Enum(*TaskStatus.values(), name='task_status_enum', native_enum=False, length=64), 
                         index=True, 
                         default=TaskStatus.NOT_STARTED, 
                         comment="任务状态")

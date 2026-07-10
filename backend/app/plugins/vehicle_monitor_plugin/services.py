@@ -1,17 +1,12 @@
 from datetime import date
 from typing import List, Optional
 
-# from app.utils.leapcloud_data import (
-#     get_vehicle_status,
-#     get_fire_states,
-#     get_charge_states,
-# )
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func
 from app.plugins.vehicle_monitor_plugin import models, schemas
 from app.plugins.vehicle_plugin.models import Vehicle
-from app.utils.all_orderby import universal_sort
+
 from app.utils.build_condition import build_condition
 
 
@@ -63,32 +58,33 @@ class VehicleMonitorService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
+        # 1. 前置统一处理排序参数，消除分支差异逻辑
+        # 默认排序字段、升降序
+        default_sort = "id"
+        default_desc = True
+        sort_expr = None
+
+        # 处理空排序场景
         if not sort_by:
-            # 分页查询
-            stmt = (
-                stmt.order_by(models.VehicleMonitor.monitor_date.desc())
-                .offset(skip)
-                .limit(limit)
-            )
-            result = await db.execute(stmt)
-            data_list = list(result.scalars().all())
+            sort_by = default_sort
+            is_desc = default_desc
         else:
-            result = await db.execute(stmt)
-            data_list = list(result.scalars().all())
+             # 字段白名单校验
+            if sort_by not in schemas.VEHICLE_MONITOR_WHITELIST:
+                sort_by = "model"
+            # 校验排序方向
+            valid_order = sort_order.lower() if sort_order else "asc"
+            is_desc = valid_order == "desc" if valid_order in ("asc", "desc") else False
 
-            # 排序处理：在数据查询完成后、返回响应前执行
-            if sort_by and data_list:
-                # 校验排序字段是否在车辆监控数据白名单中，默认按 model 排序
-                if sort_by not in schemas.VEHICLE_MONITOR_WHITELIST:
-                    sort_by = "model"
-                # 校验排序方向：无效值默认使用model排序
-                valid_order = sort_order.lower() if sort_order else "asc"
-                if valid_order not in ("asc", "desc"):
-                    valid_order = "asc"
-                data_list = universal_sort(data_list, sort_by, valid_order)
-            # 分页处理：在数据查询完成后、返回响应前执行
-            data_list = data_list[skip : skip + limit]
+        sort_expr = getattr(models.VehicleMonitor, sort_by)
 
+        # 升降序统一处理
+        order_clause = sort_expr.desc() if is_desc else sort_expr.asc()
+        stmt = stmt.order_by(order_clause).offset(skip).limit(limit)
+
+        # 3. 查询逻辑全局只写一次，无重复
+        result = await db.execute(stmt)
+        data_list = list(result.scalars().all())
         return {
             "items": data_list,
             "total": total,
@@ -100,8 +96,9 @@ class VehicleMonitorService:
     async def get_vin_list(
         db: AsyncSession,
     ):
+        # 分页，只返回前30条数据
         stmt = await db.execute(
-            select(Vehicle.vin_code).distinct()
+            select(Vehicle.vin_code).distinct().limit(20)
         )
         return list(stmt.scalars().all())
 
@@ -190,21 +187,21 @@ class VehicleMonitorService:
     @staticmethod
     async def get_usages(
         db: AsyncSession,
-        model: str,
+        model: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> list[dict]:
-
+        print("start_date",start_date,end_date)
         filters = [
             models.VehicleMonitor.is_del == 0,
         ]
-
-        if "," in model:
-            values = [v.strip() for v in model.split(",") if v.strip()]
-            filters.append(models.VehicleMonitor.model.in_(values))
-        if "," not in model:
-            filters.append(models.VehicleMonitor.model == model)
-        if start_date and end_date:
+        if model:
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.VehicleMonitor.model.in_(values))
+            if "," not in model:
+                filters.append(models.VehicleMonitor.model == model)
+        if start_date:
             filters.append(models.VehicleMonitor.monitor_date >= start_date)
         if end_date:
             filters.append(models.VehicleMonitor.monitor_date <= end_date)
@@ -242,12 +239,12 @@ class VehicleMonitorService:
         filters = [
             models.VehicleMonitor.is_del == 0,
         ]
-
-        if "," in model:
-            values = [v.strip() for v in model.split(",") if v.strip()]
-            filters.append(models.VehicleMonitor.model.in_(values))
-        if "," not in model:
-            filters.append(models.VehicleMonitor.model == model)
+        if model:
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.VehicleMonitor.model.in_(values))
+            if "," not in model:
+                filters.append(models.VehicleMonitor.model == model)
         if start_date and end_date:
             filters.append(models.VehicleMonitor.monitor_date >= start_date)
         if end_date:

@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -33,26 +32,20 @@ logs/
 *.log
 
 # 本地环境配置
-
 .env.local
 .env.dev
 .env.prod
 settings_local.py
 
 # IDE 配置
-# PyCharm
 .idea/
 *.iml
 *.iws
 *.ipr
 out/
-# VS Code
 .vscode/
 *.swp
 *.swo
-# 其他编辑器
-*.bak
-*.tmp
 
 # 系统文件
 .DS_Store
@@ -63,11 +56,12 @@ Thumbs.db
 *.db
 *.sqlite3
 
-# 缓存、临时文件
+# 缓存、临时文件和备份
 .cache/
 tmp/
 temp/
 *.tmp
+*.bak
 
 # 打包/部署
 *.tar.gz
@@ -75,3 +69,6 @@ temp/
 docker-compose.override.yml
 
 versions/
+static/
+
+problems.md

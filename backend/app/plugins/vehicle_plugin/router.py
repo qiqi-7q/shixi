@@ -1,3 +1,4 @@
+import time
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +21,13 @@ async def get_vehicle_models(
     model_list = await services.VehicleService.get_vehicle_models(db)
     return {"data": model_list}
 
+@router.get("/model_distribution")
+async def get_model_distribution(
+    db: AsyncSession = Depends(get_db),
+):
+    """获取车型分布"""
+    model_list = await services.VehicleService.model_distribution(db)
+    return {"data": model_list, "message": "success", "code": 200}
 
 @router.get("/stats/overview")
 async def get_vehicle_overview(
@@ -191,6 +199,7 @@ async def get_vehicles(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+
     return {"data": vehicleData, "message": "success", "code": 200}
 
 
@@ -434,8 +443,8 @@ async def create_borrow_record(
     current_user: User = Depends(get_current_user),
 ):
     """创建借用记录"""
-    if not current_user:
-        return {"message": "token已失效，请重新登录", "code": 401, "data": None}
+    # if not current_user:
+    #     return {"message": "token已失效，请重新登录", "code": 401, "data": None}
     result = await services.BorrowService.create_borrow_record(db, borrow, current_user)
     if result == "success":
         return {

@@ -677,14 +677,12 @@ class DataAnalysis:
                 update_kpimain = (
                     update(KpiMain)
                     .where(
-                        KpiMain.project == project,
-                        KpiMain.carModel == model,
-                        KpiMain.version == version,
-                        KpiMain.funcMode == funcMode,
+                        KpiMain.id == exists.id,
                     )
                     .values(
                         kpiMileage=mainData["kpiMileage"],
                         totalScore=total["total_s_2"],
+                        is_del=False
                     )
                 )
                 await db.execute(update_kpimain)
@@ -813,7 +811,7 @@ class DataAnalysis:
         stmt = (
             select(KpiMain)
             .where(*query_cons)
-            .order_by(KpiMain.id.desc())
+            .order_by(KpiMain.updateTime.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -827,7 +825,7 @@ class DataAnalysis:
         if not analysis_id:
             return "分析数据ID不能为空"
         stmt = await db.get(KpiMain, analysis_id)
-        if not stmt:
+        if not stmt or stmt.is_del:
             return "分析数据不存在"
         # 从KpiModule表中获取main_id=analysis_id的模块数据
         module_data = await db.execute(
@@ -1239,18 +1237,6 @@ class DataAnalysis:
             }
             for row in result.all()
         ]
-
-    @staticmethod
-    async def delete_analysis_data(db: AsyncSession, analysis_id: int):
-        if not analysis_id:
-            return "分析数据ID不能为空"
-        stmt = await db.get(KpiMain, analysis_id)
-        if not stmt:
-            return "分析数据不存在"
-        stmt.is_del = True
-        await db.commit()
-        await db.refresh(stmt)
-        return "success"
 
 
 # 实例化

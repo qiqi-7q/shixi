@@ -13,7 +13,7 @@ from app.core.redis_client import redisserve
 from app.plugins.auth_plugin import models, schemas, services
 
 router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://127.0.0.1:8000/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 async def get_current_user(
