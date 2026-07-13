@@ -95,12 +95,13 @@ class VehicleMonitorService:
     @staticmethod
     async def get_vin_list(
         db: AsyncSession,
+        keyword: Optional[str] = None,
     ):
-        # 分页，只返回前30条数据
-        stmt = await db.execute(
-            select(Vehicle.vin_code).distinct().limit(20)
-        )
-        return list(stmt.scalars().all())
+        stmt = select(Vehicle.vin_code).distinct().limit(60)
+        if keyword:
+            stmt = stmt.where(Vehicle.vin_code.icontains(keyword))
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
     async def get_cars_info(

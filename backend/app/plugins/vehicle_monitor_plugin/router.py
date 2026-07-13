@@ -44,7 +44,7 @@ async def get_vehicle_monitors(
     - 时间字段只支持 between/not_between 操作符
     - 时间字段的值如果是纯日期，将自动添加 00:00:00 或 23:59:59
     """
-    start_time = time.time()
+
     if conditions:
         for cond in conditions:
             # 支持多种字段名格式
@@ -120,15 +120,14 @@ async def get_vehicle_monitors(
         sort_by=sort_by,
         sort_order=sort_order,
     )
-    end_time = time.time()
-    print(f"{sort_by}:{sort_order},接口时间：",end_time-start_time)
+
     return {"data": vehicleMonitorData, "message": "success", "code": 200}
 
 
 @router.get("/getvinlist")
-async def get_vin_list(db: AsyncSession = Depends(get_db)):
+async def get_vin_list(keyword:Optional[str]=None,db: AsyncSession = Depends(get_db)):
     """获取车辆vin列表"""
-    result = await services.VehicleMonitorService.get_vin_list(db)
+    result = await services.VehicleMonitorService.get_vin_list(db,keyword=keyword)
     return {"data": result, "message": "success", "code": 200}
 
 
