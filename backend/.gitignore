@@ -22,8 +22,6 @@ var/
 # 虚拟环境
 venv/
 .venv/
-env/
-ENV/
 env.bak/
 venv.bak/
 
@@ -32,9 +30,6 @@ logs/
 *.log
 
 # 本地环境配置
-.env.local
-.env.dev
-.env.prod
 settings_local.py
 
 # IDE 配置
