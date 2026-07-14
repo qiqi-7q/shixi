@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.send_email import send_text_email
 from app.core.config import settings
-from app.core.database import get_db_pg
+from app.core.database import get_db
 from app.core.redis_client import redisserve
 from app.plugins.auth_plugin import models, schemas, services
 
@@ -17,7 +17,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://127.0.0.1:8000/api/auth/lo
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db_pg)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """获取当前用户（含角色和权限），验证失败抛异常"""
     if await redisserve.is_token_blacklisted(token):
@@ -128,7 +128,7 @@ async def get_all_users(
     role_name: str = Query(None, description="按角色 code 过滤"),
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=500),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_read),
 ):
     """获取用户列表（需 user:read 权限，仅返回当前平台用户）"""
@@ -149,7 +149,7 @@ async def get_users_simple(
     role: Optional[str] = Query(None, description="按角色名过滤"),
     sort_by: Optional[str] = Query(None, description="排序字段名"),
     sort_order: Optional[str] = Query("asc", description="排序方向"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_read),
 ):
     """获取用户列表（需 user:read 权限，仅返回当前平台用户）"""
@@ -166,7 +166,7 @@ async def get_users_simple(
 @router.post("/users")
 async def create_user_by_admin(
     user: schemas.UserAdminCreate,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_add),
 ):
     """管理员创建用户（需 user:add 权限）"""
@@ -179,7 +179,7 @@ async def create_user_by_admin(
 @router.get("/users/{user_id}")
 async def get_user_detail(
     user_id: int,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_read),
 ):
     """获取用户详情（需 user:read 权限）"""
@@ -193,7 +193,7 @@ async def get_user_detail(
 async def update_user(
     user_id: int,
     user_update: schemas.UserUpdate,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_update),
 ):
     """更新用户信息（需 user:update 权限）"""
@@ -204,7 +204,7 @@ async def update_user(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_delete),
 ):
     """删除用户（需 user:delete 权限）"""
@@ -217,7 +217,7 @@ async def delete_user(
 async def register(
     user: schemas.UserCreate,
     platform: str = Query("platform_a", description="平台编码，默认 platform_a"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
 ):
     """用户注册，默认分配 user 角色"""
     plat_result = await db.execute(
@@ -255,7 +255,7 @@ async def register(
 async def login(
     username: str = Form(...),
     password: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
 ):
     """用户登录（OA用户无需传password字段）
     - 根据用户名自动匹配所属平台，无需前端传入 platform
@@ -293,7 +293,7 @@ async def login(
 @router.post("/visitor_login")
 async def visitor_login(
     platform: str = Form(..., description="登录平台，如 platform_a"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
 ):
     """游客登录，无需注册账号，仅可查看数据，不能编辑、新增、删除、导入、导出"""
     # 根据平台编码查找平台 UUID
@@ -362,7 +362,7 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)):
 @router.put("/password")
 async def update_password(
     password_update: schemas.PasswordUpdate,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     """修改密码"""
@@ -389,7 +389,7 @@ async def update_password(
 @router.put("/forgetpwd")
 async def forget_password(
     username: str = Query(..., description="用户名"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
 ):
     """忘记密码"""
     stmt = select(models.User).where(models.User.username == username)
@@ -406,7 +406,7 @@ async def forget_password(
         await send_text_email(
             to_email=current_user.email,
             subject="忘记密码邮件",
-            body=f"您的密码是{current_user.password}",
+            body=f"您的新密码是{current_user.password}",
         )
     except Exception as e:
         return {"code": 500, "message": f"邮件发送失败: {str(e)}", "data": None}
@@ -425,7 +425,7 @@ async def get_roles_all(
     sort_by: str = Query("level", description="排序字段：id/level/code/name/create_at"),
     sort_order: str = Query("desc", description="排序方向：asc/desc"),
     search: Optional[str] = Query(None, description="模糊搜索角色名/编码"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
     """获取所有角色（不分页，需 role:read 权限，仅返回当前平台角色）"""
@@ -445,7 +445,7 @@ async def get_roles(
     sort_by: str = Query("level", description="排序字段：id/level/code/name/create_at"),
     sort_order: str = Query("desc", description="排序方向：asc/desc"),
     search: Optional[str] = Query(None, description="模糊搜索角色名/编码"),
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
     """获取角色列表（需 role:read 权限，仅返回当前平台角色）"""
@@ -461,7 +461,7 @@ async def get_roles(
 @router.get("/roles/uuid/{role_uuid}")
 async def get_role_by_uuid(
     role_uuid: str,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
     """通过 UUID 获取角色详情（需 role:read 权限）"""
@@ -474,7 +474,7 @@ async def get_role_by_uuid(
 @router.get("/roles/{role_id}")
 async def get_role_detail(
     role_id: int,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
     """获取角色详情（需 role:read 权限）"""
@@ -487,7 +487,7 @@ async def get_role_detail(
 @router.post("/roles")
 async def create_role(
     role_data: schemas.RoleCreate,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_add),
 ):
     """创建角色（需 role:add 权限）"""
@@ -506,7 +506,7 @@ async def create_role(
 async def update_role(
     role_id: int,
     role_data: schemas.RoleUpdate,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_update),
 ):
     """更新角色（需 role:update 权限）"""
@@ -523,7 +523,7 @@ async def update_role(
 @router.delete("/roles/{role_id}")
 async def delete_role(
     role_id: int,
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_delete),
 ):
     """删除角色（需 role:delete 权限）"""
@@ -535,7 +535,7 @@ async def delete_role(
 
 @router.get("/permissions")
 async def get_permissions(
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
     """获取权限列表（需 role:read 权限，仅返回当前平台权限）"""
@@ -556,7 +556,7 @@ async def get_permissions(
 
 @router.get("/platforms")
 async def get_platforms(
-    db: AsyncSession = Depends(get_db_pg),
+    db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     platforms = await services.PlatformService.get_platforms(db)

@@ -1,15 +1,14 @@
 import uuid as _uuid
 
 from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Boolean, ForeignKey, Table, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from app.core.database import BasePG as Base
+from app.core.database import Base
 import enum
 
 
-def _gen_uuid():
-    return _uuid.uuid4()
+def _gen_uuid_str():
+    return str(_uuid.uuid4())
 
 
 class UserRole(str, enum.Enum):
@@ -33,9 +32,9 @@ class PlatformName(str, enum.Enum):
 role_permission = Table(
     "role_permissions",
     Base.metadata,
-    Column("role_uuid", UUID(as_uuid=True), ForeignKey("roles.uuid", ondelete="CASCADE"),
+    Column("role_uuid", String(36), ForeignKey("roles.uuid", ondelete="CASCADE"),
            primary_key=True, nullable=False),
-    Column("permission_uuid", UUID(as_uuid=True), ForeignKey("permissions.uuid", ondelete="CASCADE"),
+    Column("permission_uuid", String(36), ForeignKey("permissions.uuid", ondelete="CASCADE"),
            primary_key=True, nullable=False),
 )
 
@@ -45,7 +44,7 @@ class Platform(Base):
     __tablename__ = "platforms"
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True, default=_gen_uuid)
+    uuid = Column(String(36), unique=True, nullable=False, index=True, default=_gen_uuid_str)
     code = Column(String(64), unique=True, nullable=False, index=True)
     name = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
@@ -67,11 +66,11 @@ class Permission(Base):
     )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True, default=_gen_uuid)
+    uuid = Column(String(36), unique=True, nullable=False, index=True, default=_gen_uuid_str)
     code = Column(String(128), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
-    platform_uuid = Column(UUID(as_uuid=True), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
+    platform_uuid = Column(String(36), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
                            nullable=False, index=True)
     create_by = Column(String(64), nullable=True)
     create_at = Column(DateTime, server_default=func.now())
@@ -90,12 +89,12 @@ class Role(Base):
     )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True, default=_gen_uuid)
+    uuid = Column(String(36), unique=True, nullable=False, index=True, default=_gen_uuid_str)
     code = Column(String(64), nullable=False, index=True)
     name = Column(String(128), nullable=False)
     description = Column(Text, nullable=True)
     level = Column(Integer, nullable=False, default=0)
-    platform_uuid = Column(UUID(as_uuid=True), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
+    platform_uuid = Column(String(36), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
                            nullable=False, index=True)
     create_by = Column(String(64), nullable=True)
     create_at = Column(DateTime, server_default=func.now())
@@ -118,16 +117,16 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
-    uuid = Column(UUID(as_uuid=True), unique=True, nullable=False, index=True, default=_gen_uuid)
+    uuid = Column(String(36), unique=True, nullable=False, index=True, default=_gen_uuid_str)
     username = Column(String(64), unique=True, nullable=False, index=True)
     full_name = Column(String(128), nullable=False)
     email = Column(String(256), nullable=True, index=True)
     password = Column(String(256), nullable=True)
-    role_uuid = Column(UUID(as_uuid=True), ForeignKey("roles.uuid", ondelete="RESTRICT"),
+    role_uuid = Column(String(36), ForeignKey("roles.uuid", ondelete="RESTRICT"),
                        nullable=False, index=True)
     is_oa_account = Column(Boolean, nullable=False, default=False)
     is_active = Column(Boolean, nullable=False, default=True)
-    platform_uuid = Column(UUID(as_uuid=True), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
+    platform_uuid = Column(String(36), ForeignKey("platforms.uuid", ondelete="RESTRICT"),
                            nullable=False, index=True)
     create_by = Column(String(64), nullable=True)
     create_at = Column(DateTime, server_default=func.now())

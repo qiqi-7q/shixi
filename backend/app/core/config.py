@@ -1,22 +1,25 @@
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
-from pydantic_settings import BaseSettings
+import os
+from pydantic_settings import BaseSettings,SettingsConfigDict
 
-load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env")
 
 
 class Settings(BaseSettings):
-
+    # 环境名称
+    ENV_NAME: str = "dev"
+    
     # 项目启动配置(.env中配置)
     SERVER_HOST: str = "localhost"
     SERVER_PORT: int = 8000
+    DEBUG: bool = True
+    SWAGGER_ENABLED: bool = True
 
     # MySQL配置
-    MYSQL_HOST: str = "localhost"
+    MYSQL_HOST: str = "10.192.183.117"
     MYSQL_PORT: int = 3306
-    MYSQL_USER: str = "root"
+    MYSQL_USER: str = "shang"
     MYSQL_PASSWORD: str = "shang"
     MYSQL_DATABASE: str = "data_platform_test"
     
@@ -61,7 +64,8 @@ class Settings(BaseSettings):
     # 日志目录
     LOG_DIR: Path = BASE_DIR / "logs"
     
-    # 日志文件保留天数
+    # 日志文件级别和保留天数
+    LOG_LEVEL: str = "INFO"
     BACKUPCOUNT: int = 7
 
     # 1. 邮箱配置（核心！根据你的邮箱修改）
@@ -136,8 +140,11 @@ class Settings(BaseSettings):
         "gte",
     }
 
-    class Config:
-        env_file = ".env"
 
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).parent.parent / "env" / f".env.{os.getenv('ENV_NAME', 'dev')}"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 settings = Settings()

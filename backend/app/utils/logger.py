@@ -13,7 +13,9 @@ def get_logger(name: str, log_filename: str = "app.log") -> logging.Logger:
     :return: Logger对象
     """
     logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
+    # 设置日志级别
+    logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))
+    
 
     # 避免重复添加handler
     if logger.handlers:

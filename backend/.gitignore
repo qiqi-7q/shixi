@@ -69,6 +69,5 @@ temp/
 docker-compose.override.yml
 
 versions/
-static/
 
 problems.md

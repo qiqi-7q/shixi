@@ -34,31 +34,30 @@ async def lifespan(app: FastAPI):
     await plugin_manager.register_plugin(
         "test_record", "app.plugins.test_record_plugin.plugin"
     )
-    # await plugin_manager.register_plugin(
-    #     "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
-    # )
     await plugin_manager.register_plugin(
         "test_route", "app.plugins.test_route_plugin.plugin"
     )
-    # 新增的三个插件注册
     await plugin_manager.register_plugin(
         "employee", "app.plugins.employee_plugin.plugin"
     )
     await plugin_manager.register_plugin(
         "test_miles", "app.plugins.test_miles_plugin.plugin"
     )
-    # await plugin_manager.register_plugin(
-    #     "test_task", "app.plugins.test_task_plugin.plugin"
-    # )
     await plugin_manager.register_plugin(
         "data_analysis", "app.plugins.data_analysis_plugin.plugin"
     )
-    # await plugin_manager.register_plugin(
-    #     "project_plan", "app.plugins.project_plan_plugin.plugin"
-    # )
     await plugin_manager.register_plugin(
         "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
     )
+    # await plugin_manager.register_plugin(
+    #     "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
+    # )
+    # await plugin_manager.register_plugin(
+    #     "test_task", "app.plugins.test_task_plugin.plugin"
+    # )
+    # await plugin_manager.register_plugin(
+    #     "project_plan", "app.plugins.project_plan_plugin.plugin"
+    # )
 
     # 3. 初始化数据库模型元数据缓存
     init_model_meta_cache(Base)
@@ -76,6 +75,9 @@ app = FastAPI(
     description="基于FastAPI的测试管理平台",
     version="1.0.0",
     lifespan=lifespan,
+    debug=settings.DEBUG,
+    docs_url="/docs" if settings.SWAGGER_ENABLED else None,
+    redoc_url="/redoc" if settings.SWAGGER_ENABLED else None,
 )
 
 
@@ -84,8 +86,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # 初始化插件管理器
