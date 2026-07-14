@@ -22,6 +22,10 @@ DEFAULT_MODULE_NAME = "test_record"
 
 # 不需要缓存的表名
 IGNORE_TABLE = ["users","kpi_main","kpi_module","kpi_item","driver_monitors","test_tasks"]
+# 不需要缓存的字段名
+IGNORE_COLUMN = ["id","is_del","is_kpi","create_time","update_time","remarks","created_at","updated_at","create_at","update_at","creator_id","createTime","updateTime"]
+# 需要缓存的表名
+SHOW_TABLE = ["test_records"]
 # 数据表中文名映射
 TABLE_CN = {
     "test_records": "测试记录表",
@@ -49,21 +53,26 @@ def init_model_meta_cache(base_cls: Type[DeclarativeBase]):
         if model_cls.__dict__.get("__abstract__", False):
             continue
         table_name = model_cls.__tablename__
-        if table_name in IGNORE_TABLE:
+        
+        # if table_name in IGNORE_TABLE:
+        #     continue
+        if table_name not in SHOW_TABLE:
             continue
+        
         mapper = inspect(model_cls)
-        field_dict = {col.name: col.comment or "" for col in mapper.columns}
+        # 过滤掉不需要缓存的字段
+        field_dict = {col.name: col.comment or "" for col in mapper.columns if col.name not in IGNORE_COLUMN}
         ALL_MODEL_FIELD_COMMENTS[table_name] = field_dict
 
 
-    print(f"缓存初始化完成，共加载 {len(ALL_MODEL_FIELD_COMMENTS)} 张表")
+    print(f"缓存初始化完成，共加载 {len(ALL_MODEL_FIELD_COMMENTS)} 张表的字段注释")
 
 
 def get_table_field(table_name: str) -> Dict[str, str]:
     """根据表名获取字段注释映射"""
     return ALL_MODEL_FIELD_COMMENTS.get(table_name, {})
 
-# 对外只读缓存API
+
 @labels_router.get("/field")
 def get_table_field_comments(table_name: str) -> Dict[str, str]:
     """根据表名获取字段注释映射"""
@@ -175,14 +184,17 @@ def save_labels(req: SaveLabelsRequest) -> Dict[str, Any]:
     if field_name not in fields.keys():
         return {"code": 400, "message": "field_name 不存在", "data": None}
 
+    field_cn = fields.get(field_name, "")
+
     all_data = _read_all()
     idx = _find_module_index(all_data, module_name)
 
     if idx == -1:
-        all_data.append({module_name: [{"field": field_name, "labels": labels}]})
+
+        all_data.append({module_name: [{"field": field_name, "field_cn": field_cn, "labels": labels}]})
         success = _write_all(all_data)
         if success:
-            return {"code": 200, "message": "新增成功", "data": {"field": field_name, "labels": labels}}
+            return {"code": 200, "message": "新增成功", "data": {"field": field_name, "field_cn": field_cn, "labels": labels}}
         else:
             return {"code": 400, "message": "写入文件失败", "data": None}
 
@@ -190,16 +202,17 @@ def save_labels(req: SaveLabelsRequest) -> Dict[str, Any]:
     for item in field_list:
         if item.get("field") == field_name:
             item["labels"] = labels
+            item["field_cn"] = field_cn
             success = _write_all(all_data)
             if success:
-                return {"code": 200, "message": "更新成功", "data": {"field": field_name, "labels": labels}}
+                return {"code": 200, "message": "更新成功", "data": {"field": field_name, "field_cn": field_cn, "labels": labels}}
             else:
                 return {"code": 400, "message": "写入文件失败", "data": None}
 
-    field_list.append({"field": field_name, "labels": labels})
+    field_list.append({"field": field_name, "field_cn": field_cn, "labels": labels})
     success = _write_all(all_data)
     if success:
-        return {"code": 200, "message": "新增成功", "data": {"field": field_name, "labels": labels}}
+        return {"code": 200, "message": "新增成功", "data": {"field": field_name, "field_cn": field_cn, "labels": labels}}
     else:
         return {"code": 400, "message": "写入文件失败", "data": None}
 

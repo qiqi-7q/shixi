@@ -60,8 +60,8 @@ async def lifespan(app: FastAPI):
         "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
     )
 
+    # 3. 初始化数据库模型元数据缓存
     init_model_meta_cache(Base)
-    print("所有插件模型字段注释缓存初始化完成")
 
     yield
     # 关闭时执行
@@ -91,24 +91,17 @@ app.add_middleware(
 # 初始化插件管理器
 plugin_manager.init_app(app)
 
-# # 项目根目录（app文件夹）
-# BASE_DIR = Path(__file__).parent
-# # 静态文件目录
-# STATIC_DIR = BASE_DIR / "static"
-# # 上传文件目录
-# UPLOAD_DIR = BASE_DIR / "uploads"
 
 # 文件夹不存在则自动创建
 settings.STATIC_DIR.mkdir(exist_ok=True, parents=True)
 settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
-# settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # ========== 挂载静态文件 ==========
 app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="static")
 
 # ========== 注册通用文件上传路由 ==========
 app.include_router(upload_router, prefix="/api", tags=["通用文件上传"])
-
+# ========== 注册模块标签操作路由 ==========
 app.include_router(labels_router, prefix="/api", tags=["模块标签操作"])
 
 @app.get("/")
@@ -123,6 +116,3 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "redis": await redisserve.conn_ping()}
-
-# if __name__ == "__main__":
-#     uvicorn.run("app.main:app",host=settings.SERVER_HOST, port=settings.SERVER_PORT)

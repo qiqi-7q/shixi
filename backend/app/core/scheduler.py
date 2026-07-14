@@ -46,17 +46,6 @@ scheduler.add_job(
     minute="30",
 )
 
-# trigger = ("cron",)   #每天0点30分刷新一次车辆状态
-# hour = ("0",)
-# minute = ("30",)
-
-# trigger = ("cron",) #每两小时整点刷新，固定整点执行（0、2、4…）
-# hour = ("*/2",)
-# minute = ("00",)
-
-# trigger = ("interval",) #从任务启动时刻算起，每两小时刷新
-# hours = (2,)
-
 
 # # 添加定时任务：每2小时刷新一次数据链接
 # scheduler.add_job(

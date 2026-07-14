@@ -19,6 +19,20 @@ class Settings(BaseSettings):
     MYSQL_USER: str = "root"
     MYSQL_PASSWORD: str = "shang"
     MYSQL_DATABASE: str = "data_platform_test"
+    
+    # MariaDB
+    MariaDB_HOST: str = "10.192.8.193"
+    MariaDB_PORT: int = 8006
+    MariaDB_USER: str = "root"
+    MariaDB_PASSWORD: str = "MariaDB.123456"
+    MariaDB_DATABASE: str = "data_platform_test"
+
+    # PostgreSQL配置（权限管理模块专用）
+    PG_HOST: str = "10.192.8.193"
+    PG_PORT: int = 8002
+    PG_USER: str = "postgres"
+    PG_PASSWORD: str = "Pgsql.123456"
+    PG_DATABASE: str = "auth_service"
 
     # 是否开启数据库日志打印
     DB_ECHO: bool = False

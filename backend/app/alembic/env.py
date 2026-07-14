@@ -25,7 +25,7 @@ load_dotenv(dotenv_path=app_root / ".env")
 auto_import_plugin_models()
 
 # 2. 导入ORM基类 + 所有模型
-from app.core.database import Base, DATABASE_URL
+from app.core.database import Base, DATABASE_URL_MYSQL
 
 target_metadata = Base.metadata
 
@@ -61,7 +61,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    db_url = DATABASE_URL
+    db_url = DATABASE_URL_MYSQL
     connectable = create_async_engine(db_url, poolclass=pool.NullPool)
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
