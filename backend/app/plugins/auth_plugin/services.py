@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.plugins.auth_plugin import models, schemas
+from app.utils.all_orderby import universal_sort
 
 
 async def get_user_permissions(user: models.User) -> list[str]:
@@ -560,6 +561,25 @@ class AuthService:
                 )
 
         update_dict = update_data.model_dump(exclude_unset=True)
+
+        if "role" in update_dict:
+            role_code = update_dict.pop("role")
+            if role_code:
+                role_result = await db.execute(
+                    select(models.Role).where(
+                        models.Role.code == role_code,
+                        models.Role.platform_uuid == user.platform_uuid,
+                    )
+                )
+                role_obj = role_result.scalar_one_or_none()
+                if not role_obj:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"角色 '{role_code}' 在当前平台不存在",
+                    )
+                update_dict["role_uuid"] = role_obj.uuid
+            else:
+                update_dict["role_uuid"] = None
 
         if "role_uuid" in update_dict:
             new_role_uuid = str(update_dict["role_uuid"]) if update_dict["role_uuid"] else None

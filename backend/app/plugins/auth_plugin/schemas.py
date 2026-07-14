@@ -182,6 +182,7 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     is_oa_account: Optional[bool] = None
     role_uuid: Optional[UUID] = None
+    role: Optional[str] = None
     is_active: Optional[bool] = None
 
 

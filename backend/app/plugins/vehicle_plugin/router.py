@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.auth_plugin.models import User
-from app.plugins.auth_plugin.router import get_current_user
+from app.plugins.auth_plugin.router import get_current_user, require_vehicle_add
 from app.plugins.vehicle_plugin import models, schemas, services
 
 router = APIRouter()
@@ -206,8 +206,7 @@ async def get_vehicles(
 @router.post("/createvehicle")
 async def create_vehicle(
     vehicle: schemas.VehicleCreate,
-    db: AsyncSession = Depends(get_db),
-    # current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建车辆"""
     result = await services.VehicleService.create_vehicle(db, vehicle)

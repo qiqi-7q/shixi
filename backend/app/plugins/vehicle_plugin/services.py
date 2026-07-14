@@ -220,6 +220,18 @@ class VehicleService:
         db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
         if not db_vehicle:
             return "车辆信息不存在"
+        # 其他状态改为维护中,该车辆在车辆借用表对应的所有的借用记录的状态都改为已取消
+        if vehicle_update.vehicle_status == models.VehicleStatus.MAINTENANCE:
+            record = await db.execute(
+                select(models.BorrowRecord).where(
+                    models.BorrowRecord.vehicle_id == vehicle_id,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                )
+            )
+            records = record.scalars().all()
+            if records:
+                for record in records:
+                    record.borrow_status = "cancelled"
         update_data = vehicle_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_vehicle, field, value)
@@ -619,6 +631,7 @@ class BorrowService:
             .where(
                 models.BorrowRecord.vehicle_id == borrow.vehicle_id,
                 models.BorrowRecord.borrow_time == borrow.borrow_time,
+                models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
             )
         )
         counts = counts.scalar_one_or_none()

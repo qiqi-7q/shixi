@@ -28,15 +28,15 @@ async def re_vs_task():
                 (
                     await db.execute(
                         select(models.Vehicle).filter(
-                            models.Vehicle.vehicle_status
-                            != models.VehicleStatus.MAINTENANCE
+                            models.Vehicle.vehicle_status!= models.VehicleStatus.MAINTENANCE
                         )
                     )
                 )
                 .scalars()
                 .all()
             )
-            logger.info(f"查询到{len(vehicle_list)}辆非维护中车辆")
+            vehicle_len = len(vehicle_list)
+            logger.info(f"查询到{vehicle_len}辆非维护中车辆")
             for vehicle in vehicle_list:
                 # 第一步：判断是否有今日借用
                 has_today = await db.scalar(
@@ -65,8 +65,11 @@ async def re_vs_task():
                 else:
                     # 第三步：无今日借用和未来预约，更新状态为Available
                     available_ids.append(vehicle.id)
+            borrow_len = len(borrowed_ids)
+            reserve_len = len(reserved_ids)
+            available_len = len(available_ids)
             logger.info(
-                f"今日有{len(borrowed_ids)}辆车辆被借用，{len(reserved_ids)}辆车辆被预约，{len(available_ids)}辆车辆可用"
+                f"今日有{borrow_len}辆车辆被借用，{reserve_len}辆车辆已被预约，{available_len}辆车辆归还。总计有{vehicle_len-borrow_len-reserve_len}辆车辆处于可借用状态"
             )
             # 批量写入：按分组一次性 UPDATE
             if borrowed_ids:
@@ -89,9 +92,9 @@ async def re_vs_task():
                 )
 
             await db.commit()
-        logger.info("车辆状态定时刷新完成")
+        logger.info("车辆状态定时刷新完成\n")
     except Exception as ex:
-        logger.exception(f"车辆状态定时刷新任务执行失败：{ex}")
+        logger.exception(f"车辆状态定时刷新任务执行失败：{ex}\n")
 
 
 async def re_bs_task():
@@ -133,7 +136,7 @@ async def re_bs_task():
                     returned_ids.append(record.id)
 
             logger.info(
-                f"今日有 {len(borrowing_ids)} 条借用中，{len(reserved_ids)} 条预约中，{len(returned_ids)} 条已归还"
+                f"今日有 {len(borrowing_ids)} 条借用中，{len(reserved_ids)} 条预约中，{len(returned_ids)} 条需要归还"
             )
 
             if borrowing_ids:
@@ -156,6 +159,6 @@ async def re_bs_task():
                 )
 
             await db.commit()
-        logger.info("借用记录状态定时刷新完成")
+        logger.info("借用记录状态定时刷新完成\n")
     except Exception as ex:
-        logger.exception(f"借用记录状态定时刷新任务执行失败：{ex}")
+        logger.exception(f"借用记录状态定时刷新任务执行失败：{ex}\n")
