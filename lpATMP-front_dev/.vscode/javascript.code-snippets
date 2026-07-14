@@ -1,0 +1,8 @@
+{
+  "console.log快捷输入": {
+    "scope": "",
+    "prefix": "clogv",
+    "body": ["console.log('$1:', $1);"],
+    "description": "快速生成console.log语句"
+  }
+}
