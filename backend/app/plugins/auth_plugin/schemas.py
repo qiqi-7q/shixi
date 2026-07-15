@@ -97,7 +97,12 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
+    username: str
     password: str
+    full_name:str
+    email:str
+
+
 
 
 class UserLogin(BaseModel):

@@ -336,7 +336,8 @@ class AuthService:
             db_user = models.User(
                 username=user.username,
                 password=AuthService.get_password_hash(user.password),
-                full_name=user.username,
+                full_name=user.full_name,
+                email=user.email,
                 platform_uuid=platform_uuid,
                 role_uuid=default_role.uuid if default_role else None,
             )

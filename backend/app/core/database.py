@@ -38,37 +38,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await async_session.rollback()
             raise e
 
-
-# 使用 asyncpg 驱动连接 PostgreSQL
-DATABASE_URL_PG = (
-    f"postgresql+asyncpg://{settings.PG_USER}:{settings.PG_PASSWORD}"
-    f"@{settings.PG_HOST}:{settings.PG_PORT}/{settings.PG_DATABASE}"
-)
-
-# PostgreSQL 异步数据库引擎
-engine_pg = create_async_engine(
-    DATABASE_URL_PG,
-    pool_size=settings.DB_POOL_SIZE,
-    max_overflow=settings.DB_MAX_OVERFLOW,
-    pool_pre_ping=True,
-    echo=False,
-)
-
-SessionLocalPG = async_sessionmaker(
-    autoflush=False, bind=engine_pg, expire_on_commit=False
-)
-
-# 权限管理模块专用的 declarative_base
-BasePG = declarative_base()
-
-
-async def get_db_pg() -> AsyncGenerator[AsyncSession, None]:
-    """PostgreSQL 数据库会话依赖注入"""
-    async with SessionLocalPG() as async_session:
-        try:
-            yield async_session
-            await async_session.commit()
-        except Exception as e:
-            print(f"PostgreSQL database error: {e}")
-            await async_session.rollback()
-            raise e
