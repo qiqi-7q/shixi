@@ -4,27 +4,9 @@ from logging.handlers import RotatingFileHandler
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.plugins.test_record_plugin import services
+from app.utils.logger import get_logger
 
-logger = logging.getLogger("test_record_scheduler")  # 创建一个名为###的日志记录器
-logger.setLevel(logging.INFO)  # 设置日志级别为INFO，只记录INFO及以上级别的日志
-# 配置日志记录器，将日志写入test_record_scheduler.log文件,路径为logs/test_record_scheduler.log，日志文件不存在则创建，每次重启时清空日志
-if not logger.handlers:
-    settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
-    log_file = settings.LOG_DIR / "test_record_scheduler.log"
-
-    try:
-        # 单个日志最大10MB，最多保留10个归档日志
-        handler = RotatingFileHandler(
-            log_file, maxBytes=10 * 1024 * 1024, backupCount=10, encoding="utf-8"
-        )
-        handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s - %(funcName)s - %(levelname)s - %(message)s"
-            )
-        )  # 设置日志格式，包含时间、级别和信息
-        logger.addHandler(handler)  # 将文件处理器添加到日志记录器中
-    except Exception as e:
-        logger.error(f"无法创建日志文件处理器: {e}")
+logger = get_logger(__name__, log_filename="test_record_scheduler.log")
 
 
 async def refresh_data_links_job():

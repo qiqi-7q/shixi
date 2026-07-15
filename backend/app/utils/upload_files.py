@@ -1,15 +1,22 @@
+import asyncio
 from typing import Optional
-
-from fastapi import File, Form, UploadFile
+from typing import Optional, List
+from fastapi import APIRouter, File, Form, UploadFile
 import aiofiles
+from minio import S3Error
+from starlette.responses import StreamingResponse
+
 from app.core.config import settings
 from app.core.redis_client import redisserve
+from app.core.minio_client import minioserve
 
 # 上传目录
 TEMP_DIR = settings.UPLOAD_DIR / "temp"
 
 # # 允许的文件格式
 # ALLOWED_EXT = {"jpg", "jpeg", "png", "gif", "pdf", "txt", "doc", "docx"}
+
+upload_router = APIRouter(prefix="/upload", tags=["通用文件上传"])
 
 
 async def upload_file(
@@ -127,3 +134,166 @@ async def upload_file(
 
     finally:
         await redisserve.lua_script(lock_key, client_id)
+
+
+async def upload_files_general(
+    files,
+    table_name: str,
+    record_id: int,
+    ALLOWED_EXT: set = None,
+    start_index: int = 1,
+    overwrite: bool = False,
+):
+    """
+    通用批量上传文件接口（存储到MinIO）
+    文件存储路径：{table_name}_files/{record_id}/{record_id}_01, {record_id}_02, ...
+    :param files: UploadFile列表
+    :param table_name: 表名，用于创建目录
+    :param record_id: 记录ID
+    :param ALLOWED_EXT: 允许的文件扩展名集合
+    :param start_index: 起始索引（仅在 overwrite=True 或目录为空时生效）
+    :param overwrite: 是否覆盖所有旧文件并重新编号（True=从_01开始，False=从最大索引继续）
+    :return: 文件URL列表
+    """
+    import re
+
+    # 构建存储路径前缀，测试环境存储在test目录下，前缀为test
+    prefix = f"{settings.MINIO_PATH}/{table_name}_files/{record_id}"
+
+    try:
+        if overwrite:
+            objects = await asyncio.to_thread(minioserve.list_objects, prefix=prefix)
+            for obj in objects:
+                await asyncio.to_thread(minioserve.delete_file, obj.object_name)
+            current_max_idx = start_index - 1
+        else:
+            current_max_idx = start_index - 1
+            objects = await asyncio.to_thread(minioserve.list_objects, prefix=prefix)
+            pattern = re.compile(rf"^{prefix}/{record_id}_(\d{{2}})")
+            for obj in objects:
+                match = pattern.match(obj.object_name)
+                if match:
+                    idx = int(match.group(1))
+                    if idx > current_max_idx:
+                        current_max_idx = idx
+
+        saved_paths = []
+        for offset, file in enumerate(files):
+            if not file or not file.filename:
+                continue
+
+            ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+            if ALLOWED_EXT and "." + ext not in ALLOWED_EXT:
+                continue
+
+            content = await file.read()
+            if not content:
+                continue
+
+            idx = current_max_idx + offset + 1
+            new_filename = (
+                f"{record_id}_{idx:02d}.{ext}" if ext else f"{record_id}_{idx:02d}"
+            )
+            object_name = f"{prefix}/{new_filename}"
+
+            content_type = get_content_type(ext)
+            url = await asyncio.to_thread(
+                minioserve.upload_file, content, object_name, content_type=content_type
+            )
+
+            saved_paths.append(url)
+
+        return saved_paths
+    except Exception as e:
+        raise Exception(f"文件上传到MinIO失败: {str(e)}")
+
+
+def get_content_type(ext: str) -> str:
+    content_types = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "bmp": "image/bmp",
+        "webp": "image/webp",
+        "pdf": "application/pdf",
+        "doc": "application/msword",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "txt": "text/plain",
+        "json": "application/json",
+        "xml": "application/xml",
+        "zip": "application/zip",
+        "rar": "application/x-rar-compressed",
+        "7z": "application/x-7z-compressed",
+    }
+    return content_types.get(ext, "application/octet-stream")
+
+
+@upload_router.post("/{table_name}/{record_id}")
+async def upload_files_universal(
+    table_name: str,
+    record_id: int,
+    files: List[UploadFile] = File(..., description="文件列表"),
+    overwrite: bool = Form(False, description="是否覆盖旧文件，默认false"),
+):
+    """
+    通用文件上传接口（全局路由）
+    文件存储路径：{table_name}_files/{record_id}/{record_id}_01, {record_id}_02, ...
+
+    :param table_name: 表名，用于创建目录
+    :param record_id: 记录ID
+    :param files: 文件列表
+    :param overwrite: 是否覆盖旧文件
+    """
+    valid_files = [f for f in files if f and f.filename]
+    if not valid_files:
+        return {"message": "请选择要上传的文件", "code": 400, "data": None}
+
+    saved_paths = await upload_files_general(
+        valid_files, table_name, record_id, start_index=1, overwrite=overwrite
+    )
+
+    return {
+        "message": f"成功上传{len(saved_paths)}个文件",
+        "code": 200,
+        "data": {
+            "record_id": record_id,
+            "uploaded_files": saved_paths,
+            "total_count": len(saved_paths),
+        },
+    }
+
+
+
+# @upload_router.get("/preview")
+# async def preview_file(
+#     bucket: str,
+#     key: str,
+#     # current_user: User = Depends(get_current_user)
+# ):
+#     try:
+#         # 1. 将同步minio操作丢到线程池，不阻塞async事件循环
+#         obj_stat = await asyncio.to_thread(minioserve.client.stat_object, bucket, key)
+#         stream = await asyncio.to_thread(minioserve.client.get_object, bucket, key)
+#     except S3Error:
+#         return {"message": "文件不存在", "code": 404, "data": None}
+#
+#     # 封装同步流为异步生成器，分片读取，避免一次性加载全部文件
+#     async def file_iterator():
+#         try:
+#             # 分片读取，每次64KB
+#             while chunk := await asyncio.to_thread(stream.read, 65536):
+#                 yield chunk
+#         finally:
+#             # 流读取完毕后再关闭，不会提前释放
+#             await asyncio.to_thread(stream.close)
+#
+#     # 兜底媒体类型，防止content_type为空导致图片不渲染
+#     media_type = obj_stat.content_type or "image/png"
+#
+#     return StreamingResponse(
+#         content=file_iterator(),
+#         media_type=media_type
+#     )

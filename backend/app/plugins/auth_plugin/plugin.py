@@ -16,8 +16,12 @@ class AuthPlugin(BasePlugin):
         return "1.0.0"
 
     async def register(self, app: FastAPI):
-        # 创建数据库表
-        async with engine.begin() as conn:
-            await conn.run_sync(models.Base.metadata.create_all)
-        # 注册路由
+        # 在 MySQL 中创建权限管理相关表
+        try:
+            async with engine.connect() as conn:
+                await conn.run_sync(models.Base.metadata.create_all, checkfirst=True)
+        except Exception as e:
+            print(f"[AuthPlugin] MySQL 建表失败: {e}")
+
+        # 注册路由（无论建表是否成功都要注册）
         app.include_router(router, prefix="/api/auth", tags=["认证"])

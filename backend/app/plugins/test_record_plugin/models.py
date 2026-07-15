@@ -10,7 +10,7 @@ except ImportError:
 
 import enum
 
-from sqlalchemy import Column, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Column, DateTime, Enum, Integer, String, Text, JSON
 from sqlalchemy.sql import func
 
 from app.core.database import Base
@@ -78,13 +78,13 @@ class TestRecord(Base):
     creator = Column(String(50), comment="创建人")
     creator_id = Column(Integer, comment="创建人ID")
     function_mode = Column(
-        Enum(FunctionMode), index=True, default=FunctionMode.NAP, comment="功能模式"
+        Enum(FunctionMode, native_enum=False, length=64), index=True, default=FunctionMode.NAP, comment="功能模式"
     )
     problem_desc = Column(Text, comment="问题描述")
     problem_category = Column(
-        Enum(EvaluationDimension), comment="评价维度"
+        Enum(EvaluationDimension, native_enum=False, length=64), comment="评价维度"
     )  # 可靠性、法规安全、舒适性、可用性 -->问题大类打分使用
-    kpi_type = Column(Enum(KPIType), comment="KPI项")  # KPI项，打分使用
+    kpi_type = Column(Enum(KPIType, native_enum=False, length=64), comment="KPI项")  # KPI项，打分使用
     problem_scene = Column(String(100), comment="问题场景")  # 对应一级
     problem_type = Column(String(100), comment="问题分类")
     problem_phenomenon = Column(Text, comment="问题现象")  # 对应四级
@@ -95,7 +95,7 @@ class TestRecord(Base):
     wetrack_link = Column(String(500), comment="Wetrack链接")
     analyze_result = Column(Text, comment="分析结果")
     analyze_user = Column(String(50), comment="分析人员")
-    analyze_attach = Column(String(500), comment="分析附件")
+    analyze_attach = Column(JSON, default=list, comment="分析附件（多文件路径数组）")
     software_version = Column(String(50), comment="软件版本")
     remarks = Column(Text, comment="备注")
 

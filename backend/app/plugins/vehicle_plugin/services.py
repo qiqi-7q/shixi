@@ -1,17 +1,14 @@
-from io import BytesIO
 from typing import Dict, List, Optional, Set, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from fastapi import UploadFile
-from openpyxl import load_workbook
-from sqlalchemy import and_, delete, exists, or_, select
+from sqlalchemy import and_, case, delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.plugins.vehicle_plugin import models, schemas
+from app.plugins.employee_plugin.models import Employee, JobType
 
-from app.utils.build_condition import build_condition, _find_enum_by_value
-
-from sqlalchemy import func
+from app.utils.build_condition import ENUM_FIELD_MAP, build_condition, get_enum_value
 
 from app.utils.handle_excel_testrecord import (
     build_enum_lookup,
@@ -61,10 +58,36 @@ STRING_FIELDS = (
 class VehicleService:
 
     @staticmethod
+    async def get_vehicle_models(db: AsyncSession):
+        # 总车辆表获取所有车型, 并去重
+        stmt = await db.execute(select(models.Vehicle.model).distinct())
+        return list(stmt.scalars().all())
+
+    @staticmethod
+    async def model_distribution(db: AsyncSession):
+        """获取车型分布，返回所有车型及其车辆数量,按车辆数量降序排序"""
+        stmt = await db.execute(select(models.Vehicle.model, func.count(models.Vehicle.id).label("count")).group_by(models.Vehicle.model).order_by(func.count(models.Vehicle.id).desc()))
+        result = stmt.all()
+
+        if not result:
+            return []
+        model_dis = [
+            {
+                "model": record.model,
+                "count": record.count,
+            }
+            for record in result
+        ]
+
+        return model_dis
+
+    @staticmethod
     async def get_vehicles(
         db: AsyncSession,
         skip: int = 0,
         limit: int = 100,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
         conditions: Optional[List[dict]] = None,
     ) -> dict:
         stmt = select(models.Vehicle)
@@ -88,60 +111,49 @@ class VehicleService:
         total_result = await db.execute(total_stmt)
         total = total_result.scalar_one()
 
-        # 分页查询
-        stmt = stmt.offset(skip).limit(limit)
+        # 1. 前置统一处理排序参数，消除分支差异逻辑
+        # 默认排序字段、升降序
+        default_sort = "id"
+        default_desc = True
+        sort_expr = None
 
+        # 处理空排序场景
+        if not sort_by:
+            sort_by = default_sort
+            is_desc = default_desc
+        else:
+            # 字段白名单校验
+            if sort_by not in schemas.VEHICLE_WHITELIST:
+                sort_by = "model"
+            # 校验排序方向
+            valid_order = sort_order.lower() if sort_order else "asc"
+            is_desc = valid_order == "desc" if valid_order in ("asc", "desc") else False
+
+        # 2. 统一构建排序表达式（消除if/else分页重复代码）
+        if sort_by in ENUM_FIELD_MAP:
+            # 枚举CASE WHEN排序
+            enum_cls = getattr(models, ENUM_FIELD_MAP[sort_by])
+            field_col = getattr(models.Vehicle, sort_by)
+            whens = [(field_col == m.value, i) for i, m in enumerate(enum_cls)]
+            sort_expr = case(*whens)
+        else:
+            # 普通字段原生排序
+            sort_expr = getattr(models.Vehicle, sort_by)
+
+        # 升降序统一处理
+        order_clause = sort_expr.desc() if is_desc else sort_expr.asc()
+        stmt = stmt.order_by(order_clause).offset(skip).limit(limit)
+
+        # 3. 查询逻辑全局只写一次，无重复
         result = await db.execute(stmt)
+        data_list = list(result.scalars().all())
+
         return {
-            "items": list(result.scalars().all()),
+            "items": data_list,
             "total": total,
             "skip": skip,
             "limit": limit,
         }
-
-    @staticmethod
-    async def get_vehicles_simple(
-        db: AsyncSession,
-        skip: int = 0,
-        limit: int = 100,
-        vehicle_status: Optional[str] = None,
-        test_status: Optional[str] = None,
-        group: Optional[str] = None,
-        vin_code: Optional[str] = None,
-        model: Optional[str] = None,
-        driver_name: Optional[str] = None,
-    ) -> dict:
-        # 1. 统一收集筛选条件
-        filters = []
-
-        # 处理 vehicle_status（支持英文枚举名和中文值）
-        if vehicle_status:
-            filters.append(models.Vehicle.vehicle_status == vehicle_status)
-        if group:
-            filters.append(models.Vehicle.group == group)
-        if vin_code:
-            filters.append(models.Vehicle.vin_code.contains(vin_code))
-        if model:
-            filters.append(models.Vehicle.model.icontains(model))
-        if test_status:
-            filters.append(models.Vehicle.test_status == test_status)
-
-        # 2. 先查符合条件的总条数（不带分页）
-        count_stmt = select(func.count(models.Vehicle.id)).where(*filters)
-        total = await db.scalar(count_stmt) or 0
-
-        # 3. 再查分页数据
-        data_stmt = (
-            select(models.Vehicle)
-            .where(*filters)
-            .offset(skip)
-            .limit(limit)
-            .order_by(models.Vehicle.id.desc())
-        )
-        result = await db.execute(data_stmt)
-        data_list = list(result.scalars().all())
-
-        return {"items": data_list, "total": total, "skip": skip, "limit": limit}
 
     @staticmethod
     async def get_vehicle(db: AsyncSession, vehicle_id: int) -> models.Vehicle | str:
@@ -208,6 +220,18 @@ class VehicleService:
         db_vehicle = await VehicleService.get_vehicle(db, vehicle_id)
         if not db_vehicle:
             return "车辆信息不存在"
+        # 其他状态改为维护中,该车辆在车辆借用表对应的所有的借用记录的状态都改为已取消
+        if vehicle_update.vehicle_status == models.VehicleStatus.MAINTENANCE:
+            record = await db.execute(
+                select(models.BorrowRecord).where(
+                    models.BorrowRecord.vehicle_id == vehicle_id,
+                    models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+                )
+            )
+            records = record.scalars().all()
+            if records:
+                for record in records:
+                    record.borrow_status = "cancelled"
         update_data = vehicle_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(db_vehicle, field, value)
@@ -452,45 +476,6 @@ class VehicleService:
 class BorrowService:
 
     @staticmethod
-    async def get_borrow_records_simple(
-        db: AsyncSession,
-        skip: int = 0,
-        limit: int = 100,
-        model: Optional[str] = None,
-        vin_code: Optional[str] = None,
-        borrow_status: Optional[str] = None,
-        driver_name: Optional[str] = None,
-    ) -> dict:
-        stmt = select(models.BorrowRecord)
-        if borrow_status:
-            stmt = stmt.where(models.BorrowRecord.borrow_status == borrow_status)
-        if model:
-            stmt = stmt.where(models.BorrowRecord.model.icontains(model))
-        if vin_code:
-            stmt = stmt.where(models.BorrowRecord.vin_code.contains(vin_code))
-        if driver_name:
-            stmt = stmt.where(models.BorrowRecord.driver_name.contains(driver_name))
-
-        # 统计总数
-        total_stmt = select(func.count()).select_from(stmt.subquery())
-        total_result = await db.execute(total_stmt)
-        total = total_result.scalar_one()
-
-        # 借用记录倒序排序，先按照借用时间，再按照创建时间
-        stmt = stmt.order_by(
-            models.BorrowRecord.borrow_time.desc(),
-            models.BorrowRecord.created_at.desc(),
-        )
-        stmt = stmt.offset(skip).limit(limit)
-        result = await db.execute(stmt)
-        return {
-            "items": list(result.scalars().all()),
-            "total": total,
-            "skip": skip,
-            "limit": limit,
-        }
-
-    @staticmethod
     async def get_borrow_records(
         db: AsyncSession,
         skip: int = 0,
@@ -549,6 +534,7 @@ class BorrowService:
         record_id: int,
         vehicle_id: int,
     ) -> list[dict]:
+        """查询车辆已被借用的记录"""
         current_date = date.today()
         # 查询BorrowRecord数据库中，vehicle_id=borrow.vehicle_id,借用状态是borrowing或reserved，但除了当前记录外的借用记录，
         existing_borrows = await db.execute(
@@ -562,21 +548,42 @@ class BorrowService:
             .order_by(models.BorrowRecord.borrow_time.desc())
         )
 
-        # 提取记录的borrower、borrow_time返回列表
-        # existing_borrows = [
-        #     {"borrower": record.borrower, "borrow_time": record.borrow_time}
-        #     for record in existing_borrows.scalars().all()
-        # ]
         existing_borrows = [
             {
-                "borrower": record._mapping["borrower"],
-                "borrow_time": record._mapping["borrow_time"],
+                "borrower": record["borrower"],
+                "borrow_time": record["borrow_time"],
             }
-            for record in existing_borrows.all()
+            for record in existing_borrows.mappings().all()
         ]
         if not existing_borrows:
             return []
         return existing_borrows
+
+    # 获取内照处于有效期内的司机的id和姓名,以当前日期为准,根据id asc排序
+    @staticmethod
+    async def get_dcv(db: AsyncSession) -> list[dict]:
+        date_today = date.today()
+        stmt = await db.execute(
+            select(Employee.id, Employee.name, Employee.card_validity)
+            .where(
+                Employee.job_type == JobType.DRIVER,
+                Employee.card_validity.is_not(None),
+                Employee.card_validity >= date_today,
+            )
+            .order_by(Employee.id.asc())
+        )
+
+        dr_re = [
+            {
+                "id": record["id"],
+                "name": record["name"],
+                "card_validity": record["card_validity"],
+            }
+            for record in stmt.mappings().all()
+        ]
+        if not dr_re:
+            return []
+        return dr_re
 
     @staticmethod
     async def create_borrow_record(
@@ -588,17 +595,49 @@ class BorrowService:
             return "借用时间不能为空"
         # 获取当前日期（只要年月日）
         current_time = date.today()
-        print("current", current_time, borrow.borrow_time)
-        if borrow.borrow_time < current_time:
-            return "借用时间必须是今天及之后的日期"
+        # 获取明天
+        tomorrow_time = current_time + timedelta(days=1)
+
+        if borrow.borrow_time < current_time or borrow.borrow_time > tomorrow_time:
+            return "借用时间必须是今天或明天"
 
         # 检查车辆是否存在
         vehicle = await VehicleService.get_vehicle(db, borrow.vehicle_id)
-        print(vehicle)
         if isinstance(vehicle, str):
             return vehicle
+
         if vehicle.vehicle_status == models.VehicleStatus.MAINTENANCE:
             return "车辆正在维护，无法借用"
+
+        # 检查车辆的临牌时间是否到期
+        if vehicle.temp_plate_expire_date:
+            if vehicle.temp_plate_expire_date < borrow.borrow_time:
+                return "车辆临牌时间在借用时间前到期，无法借用"
+
+        # 根据传回的司机的id获取内照有效期
+        dr_card = await db.execute(
+            select(Employee.card_validity).where(Employee.id == borrow.driver_id)
+        )
+        dr_card = dr_card.scalar_one_or_none()
+        if dr_card:
+            if dr_card < borrow.borrow_time:
+                return "借用时间内内照有效期过期，无法借用，请选择其他司机"
+
+        # 获取车辆在指定时间的借用次数
+        counts = await db.execute(
+            select(
+                func.count(models.BorrowRecord.id).label("count"),
+            )
+            .where(
+                models.BorrowRecord.vehicle_id == borrow.vehicle_id,
+                models.BorrowRecord.borrow_time == borrow.borrow_time,
+                models.BorrowRecord.borrow_status.in_(["borrowing", "reserved"]),
+            )
+        )
+        counts = counts.scalar_one_or_none()
+        if counts and counts > 0:
+            return f"车辆在{borrow.borrow_time}已借用，无法再次借用"
+
         # 事务
         try:
             # 更新车辆状态
@@ -620,7 +659,7 @@ class BorrowService:
 
             # 创建借用记录
             borrow.record_creator = current_user.full_name
-            db_borrow = models.BorrowRecord(**borrow.model_dump())
+            db_borrow = models.BorrowRecord(**borrow.model_dump(exclude={"driver_id"}))
 
             db.add(db_borrow)
             await db.commit()
@@ -643,6 +682,16 @@ class BorrowService:
             return "借用已完成，无法修改"
         if borrow_update.borrow_time < current_time:
             return "借用时间必须是今天及之后的日期"
+
+        # 检查车辆是否存在
+        vehicle = await db.get(models.Vehicle, record.vehicle_id)
+        if not vehicle:
+            return "车辆信息不存在"
+
+        # 检查车辆的临牌时间是否到期
+        if vehicle.temp_plate_expire_date < borrow_update.borrow_time:
+            return "车辆临牌时间在借用时间前到期，无法借用"
+
         update_data = borrow_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(record, field, value)
@@ -787,16 +836,18 @@ class VehicleStatsService:
         group: Optional[str] = None,
         vehicle_status: Optional[str] = None,
         test_status: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
     ) -> dict:
         """获取车辆概览统计（卡片数据）"""
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.like(f"%{model}%"))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.Vehicle.model.in_(values))
+            else:
+                filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             filters.append(models.Vehicle.group == group)
         if vehicle_status:
@@ -883,13 +934,17 @@ class VehicleStatsService:
         # 1. 构建车辆筛选条件
         vehicle_filters = []
         if model:
-            vehicle_filters.append(models.Vehicle.model.like(f"%{model}%"))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                vehicle_filters.append(models.Vehicle.model.in_(values))
+            else:
+                vehicle_filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            vehicle_filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            vehicle_filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             group_enum = getattr(
                 models.VehicleGroup, group, None
-            ) or _find_enum_by_value(models.VehicleGroup, group)
+            ) or get_enum_value("VehicleGroup", group)
             if group_enum:
                 vehicle_filters.append(models.Vehicle.group == group_enum)
             else:
@@ -897,7 +952,7 @@ class VehicleStatsService:
         if vehicle_status:
             status_enum = getattr(
                 models.VehicleStatus, vehicle_status, None
-            ) or _find_enum_by_value(models.VehicleStatus, vehicle_status)
+            ) or get_enum_value("VehicleStatus", vehicle_status)
             if status_enum:
                 vehicle_filters.append(models.Vehicle.vehicle_status == status_enum)
             else:
@@ -905,7 +960,7 @@ class VehicleStatsService:
         if test_status:
             test_enum = getattr(
                 models.TestStatus, test_status, None
-            ) or _find_enum_by_value(models.TestStatus, test_status)
+            ) or get_enum_value("TestStatus", test_status)
             if test_enum:
                 vehicle_filters.append(models.Vehicle.test_status == test_enum)
             else:
@@ -999,9 +1054,13 @@ class VehicleStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.Vehicle.model.like(f"%{model}%"))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.Vehicle.model.in_(values))
+            else:
+                filters.append(models.Vehicle.model.icontains(model))
         if vin_code:
-            filters.append(models.Vehicle.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.Vehicle.vin_code.icontains(vin_code))
         if group:
             filters.append(models.Vehicle.group == group)
         if vehicle_status:
@@ -1057,11 +1116,15 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.BorrowRecord.model.in_(values))
+            else:
+                filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
-            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
-            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
+            filters.append(models.BorrowRecord.driver_name.icontains(driver_name))
 
         # 总借用记录数
         total_stmt = select(func.count(models.BorrowRecord.id))
@@ -1125,12 +1188,18 @@ class BorrowStatsService:
         # 构建筛选条件
         filters = []
         if model:
-            filters.append(models.BorrowRecord.model.like(f"%{model}%"))
+            if "," in model:
+                values = [v.strip() for v in model.split(",") if v.strip()]
+                filters.append(models.BorrowRecord.model.in_(values))
+            else:
+                filters.append(models.BorrowRecord.model.icontains(model))
         if vin_code:
-            filters.append(models.BorrowRecord.vin_code.like(f"%{vin_code}%"))
+            filters.append(models.BorrowRecord.vin_code.icontains(vin_code))
         if driver_name:
-            filters.append(models.BorrowRecord.driver_name.like(f"%{driver_name}%"))
-
+            filters.append(models.BorrowRecord.driver_name.icontains(driver_name))
+        if borrow_status:
+            filters.append(models.BorrowRecord.borrow_status == borrow_status)
+        print("filters:", filters)
         stmt = select(
             models.BorrowRecord.borrow_status.label("status"),
             func.count(models.BorrowRecord.id).label("count"),

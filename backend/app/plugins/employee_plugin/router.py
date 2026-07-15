@@ -1,27 +1,46 @@
+import time
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.plugins.employee_plugin import schemas, services
+from typing import Optional
 
 router = APIRouter()
 
 
 @router.post("/")
-async def create_employee(data: schemas.EmployeeCreate, db: AsyncSession = Depends(get_db)):
+async def create_employee(
+    data: schemas.EmployeeCreate, db: AsyncSession = Depends(get_db)
+):
     result = await services.create_employee(db=db, data=data)
     return {"code": 200, "data": result, "message": "员工创建成功"}
 
 
-@router.get("/")
-async def get_employees_list(
-    skip: int = Query(0, description="跳过的记录数，用于分页"),
-    limit: int = Query(10, description="每页显示的记录数"),
-    name: str = Query(None, description="按姓名模糊筛选"),
-    module_name: str = Query(None, description="按模块名称模糊筛选"),
-    db: AsyncSession = Depends(get_db)
+@router.get("/fixsearch")
+async def get_employees_simple(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    name: Optional[str] = None,
+    module_name: Optional[str] = None,
+    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
+    sort_order: Optional[str] = Query(
+        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
+    ),
+    db: AsyncSession = Depends(get_db),
 ):
-    result = await services.get_employees(db, skip=skip, limit=limit, name=name, module_name=module_name)
-    return {"code": 200, "data": result, "message": "获取员工列表成功"}
+    """获取员工列表（固定字段查询，支持排序）"""
+    employeeData = await services.get_employees_simple(
+        db,
+        skip=skip,
+        limit=limit,
+        name=name,
+        module_name=module_name,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
+
+    return {"data": employeeData, "message": "success", "code": 200}
 
 
 @router.get("/{employee_id}")
@@ -33,7 +52,9 @@ async def get_employee(employee_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{employee_id}")
-async def update_employee(employee_id: int, data: schemas.EmployeeUpdate, db: AsyncSession = Depends(get_db)):
+async def update_employee(
+    employee_id: int, data: schemas.EmployeeUpdate, db: AsyncSession = Depends(get_db)
+):
     result = await services.update_employee(db, employee_id=employee_id, data=data)
     if result:
         return {"code": 200, "data": result, "message": "更新员工成功"}

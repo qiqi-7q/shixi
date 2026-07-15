@@ -3,7 +3,11 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.plugins.vehicle_plugin.models import TestStatus, VehicleGroup, VehicleStatus
+from app.plugins.vehicle_plugin.models import (
+    TestStatus,
+    VehicleGroup,
+    VehicleStatus,
+)
 
 
 class VehicleBase(BaseModel):
@@ -89,6 +93,7 @@ class BorrowRecordBase(BaseModel):
 
 
 class BorrowRecordCreate(BorrowRecordBase):
+    driver_id: int = Field(None, description="司机ID")
     pass
 
 
