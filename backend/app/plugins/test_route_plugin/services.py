@@ -20,8 +20,8 @@ class TestRouteService:
             return "路线里程必须大于0"
         if not route.diff:
             return "难度系数不能为空"
-        if route.diff < 0 or route.diff > 100:
-            return "难度系数必须在0到100之间"
+        if route.diff < 0 or route.diff > 5:
+            return "难度系数必须在1到5星之间"
         if not route.test_func:
             return "测试功能不能为空"
         if not route.creator:
@@ -93,8 +93,8 @@ class TestRouteService:
             return "路线不存在"
         if route.route_length <= 0:
             return "路线里程必须大于0"
-        if route.diff < 0 or route.diff > 100:
-            return "难度系数必须在0到100之间"
+        if route.diff < 0 or route.diff > 5:
+            return "难度系数必须在1到5星之间"
         update_data = route.model_dump(exclude_unset=True)
         for key, value in update_data.items():
             setattr(db_route, key, value)

@@ -27,7 +27,7 @@ class TestRoute(Base):
     location = Column(String(100), comment="城市")
     route_name = Column(String(100), nullable=False, comment="路线名称")
     route_length = Column(DECIMAL(10, 1), nullable=False, comment="路线里程")
-    diff = Column(DECIMAL(3, 0), nullable=False, comment="难度系数（0-100）")
+    diff = Column(DECIMAL(3, 0), nullable=False, comment="难度系数（1-5星）")
     test_func = Column(String(100), nullable=False, comment="测试功能")
     route_desc = Column(Text, comment="路线描述")
     route_feature = Column(String(100), comment="路线特征")

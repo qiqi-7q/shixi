@@ -338,7 +338,7 @@ async def logout(
 ):
     """用户登出"""
     if not current_user:
-        return {"code": 401, "message": "Could not validate credentials", "data": None}
+        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
 
     # 将token加入黑名单
     await redisserve.blacklist_token(token)
@@ -351,7 +351,7 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
 
     if not current_user:
-        return {"code": 401, "message": "Could not validate credentials", "data": None}
+        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
     return {
         "code": 200,
         "message": "获取成功",
@@ -367,13 +367,13 @@ async def update_password(
 ):
     """修改密码"""
     if not current_user:
-        return {"code": 401, "message": "Could not validate credentials", "data": None}
+        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
 
     # 验证旧密码
     if not services.AuthService.verify_password(
         password_update.old_password, current_user.password
     ):
-        return {"code": 400, "message": "Incorrect old password", "data": None}
+        return {"code": 400, "message": "旧密码错误", "data": None}
 
     # 更新密码
     await services.AuthService.update_password(
@@ -412,7 +412,7 @@ async def forget_password(
         return {"code": 500, "message": f"邮件发送失败: {str(e)}", "data": None}
 
     return {
-        "message": "Password has been sent to your email address",
+        "message": "密码已发送到您的邮箱，请查收",
         "code": 200,
         "data": services.AuthService._user_to_response(current_user).model_dump(mode="json"),
     }
