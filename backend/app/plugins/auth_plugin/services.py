@@ -236,9 +236,10 @@ class RoleService:
     @staticmethod
     def _validate_permission_platform(permissions, platform_uuid: str):
         """校验权限是否属于当前平台"""
+        platform_uuid_str = str(platform_uuid) if platform_uuid else None
         invalid = [
             p for p in permissions
-            if p.platform_uuid is not None and p.platform_uuid != platform_uuid
+            if p.platform_uuid is not None and str(p.platform_uuid) != platform_uuid_str
         ]
         if invalid:
             codes = [p.code for p in invalid]
@@ -665,6 +666,7 @@ class AuthService:
             db_user = models.User(
                 username=user.username, platform_uuid=user.platform_uuid,
                 full_name=user.full_name if user.full_name else user.username,
+                email=user.email,
                 password=AuthService.get_password_hash(user.password) if user.password else None,
                 is_oa_account=user.is_oa_account,
                 role_uuid=role_uuid,

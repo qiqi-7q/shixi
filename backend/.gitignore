@@ -31,6 +31,7 @@ logs/
 
 # 本地环境配置
 settings_local.py
+env/
 
 # IDE 配置
 .idea/
