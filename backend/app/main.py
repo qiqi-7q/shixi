@@ -5,10 +5,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 
+from app.core.aiohttp_client import close_session
 from app.core.config import settings
+from app.core.database import Base
 from app.core.plugin_manager import plugin_manager
 from app.core.redis_client import redisserve
 from app.core.scheduler import scheduler, stop_scheduler
+from app.utils.json_operator import init_model_meta_cache, labels_router
+from app.utils.upload_files import upload_router
 
 
 @asynccontextmanager
@@ -31,12 +35,8 @@ async def lifespan(app: FastAPI):
         "test_record", "app.plugins.test_record_plugin.plugin"
     )
     await plugin_manager.register_plugin(
-        "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
-    )
-    await plugin_manager.register_plugin(
         "test_route", "app.plugins.test_route_plugin.plugin"
     )
-    # 新增的三个插件注册
     await plugin_manager.register_plugin(
         "employee", "app.plugins.employee_plugin.plugin"
     )
@@ -44,23 +44,30 @@ async def lifespan(app: FastAPI):
         "test_miles", "app.plugins.test_miles_plugin.plugin"
     )
     await plugin_manager.register_plugin(
-        "test_task", "app.plugins.test_task_plugin.plugin"
-    )
-    await plugin_manager.register_plugin(
         "data_analysis", "app.plugins.data_analysis_plugin.plugin"
     )
     await plugin_manager.register_plugin(
-        "project_plan", "app.plugins.project_plan_plugin.plugin"
+        "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
     )
     # await plugin_manager.register_plugin(
-    #     "vehicle_monitor", "app.plugins.vehicle_monitor_plugin.plugin"
+    #     "driver_monitor", "app.plugins.driver_monitor_plugin.plugin"
     # )
+    # await plugin_manager.register_plugin(
+    #     "test_task", "app.plugins.test_task_plugin.plugin"
+    # )
+    # await plugin_manager.register_plugin(
+    #     "project_plan", "app.plugins.project_plan_plugin.plugin"
+    # )
+
+    # 3. 初始化数据库模型元数据缓存
+    init_model_meta_cache(Base)
 
     yield
     # 关闭时执行
-    stop_scheduler()
     print("Shutting down...")
+    stop_scheduler()
     await redisserve.close_conn()
+    await close_session()
 
 
 app = FastAPI(
@@ -68,6 +75,9 @@ app = FastAPI(
     description="基于FastAPI的测试管理平台",
     version="1.0.0",
     lifespan=lifespan,
+    debug=settings.DEBUG,
+    docs_url="/docs" if settings.SWAGGER_ENABLED else None,
+    redoc_url="/redoc" if settings.SWAGGER_ENABLED else None,
 )
 
 
@@ -76,29 +86,25 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # 初始化插件管理器
 plugin_manager.init_app(app)
 
-# # 项目根目录（app文件夹）
-# BASE_DIR = Path(__file__).parent
-# # 静态文件目录
-# STATIC_DIR = BASE_DIR / "static"
-# # 上传文件目录
-# UPLOAD_DIR = BASE_DIR / "uploads"
 
 # 文件夹不存在则自动创建
 settings.STATIC_DIR.mkdir(exist_ok=True, parents=True)
 settings.UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
-# settings.LOG_DIR.mkdir(exist_ok=True, parents=True)
 
 # ========== 挂载静态文件 ==========
-# 访问地址：http://127.0.0.1:8000/static/xxx.png
 app.mount(path="/static", app=StaticFiles(directory=settings.STATIC_DIR), name="static")
 
+# ========== 注册通用文件上传路由 ==========
+app.include_router(upload_router, prefix="/api", tags=["通用文件上传"])
+# ========== 注册模块标签操作路由 ==========
+app.include_router(labels_router, prefix="/api", tags=["模块标签操作"])
 
 @app.get("/")
 async def root():

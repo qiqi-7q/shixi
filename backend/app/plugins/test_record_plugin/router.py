@@ -1,10 +1,8 @@
 import asyncio
 import io
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import Request
 from typing import Optional, List
-from datetime import datetime
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import xlsxwriter
@@ -40,9 +38,28 @@ async def create_record(
         return {"message": result, "code": 400, "data": None}
 
 
+@router.get("/field_options")
+async def get_field_options(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    获取 project、car_type、software_version 的去重列表，
+    供前端 NAP 界面和新增测试记录表单的下拉框使用。
+    返回格式：
+    {
+        "projects": ["项目A", "项目B", ...],
+        "car_types": ["车型X", "车型Y", ...],
+        "software_versions": ["v1.0.0", "v2.0.0", ...]
+    }
+    """
+    options = await services.get_field_options(db)
+    return {"code": 200, "data": options, "message": "success"}
+
+
 # 2. 获取列表
 @router.get("/fixsearch")
 async def get_records(
+    request: Request,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
@@ -69,6 +86,8 @@ async def get_records(
         software_version=software_version,
         current_user=current_user,
     )
+
+
     return {"code": 200, "data": result, "message": "获取测试记录列表成功"}
 
 
@@ -77,6 +96,7 @@ TIME_FIELDS = {"created_at", "updated_at", "problem_time"}
 
 @router.post("/advsearch")
 async def get_records_advanced(
+    request: Request,
     skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(100, ge=1, le=1000, description="每页返回的记录数"),
     conditions: Optional[List[dict]] = None,
@@ -159,6 +179,8 @@ async def get_records_advanced(
         limit=limit,
         conditions=conditions,
     )
+
+
     return {"data": records, "message": "success", "code": 200}
 
 
@@ -208,7 +230,7 @@ async def batch_import(
     上传Excel文件，批量导入测试记录数据。自动进行数据去重、格式校验和批量写入。
     """
     if not current_user:
-        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+        return {"message": "token已失效，请重新登录", "code": 401, "data": None}
     result = await services.batch_import_records(file, db, current_user)
     return result
 
@@ -268,34 +290,6 @@ async def batch_export(
 
     if not export_data:
         return {"message": "没有找到符合条件的数据", "code": 400, "data": None}
-
-    # # 创建Excel文件
-    # output = io.BytesIO()
-    # workbook = xlsxwriter.Workbook(output)
-    # worksheet = workbook.add_worksheet("测试记录")
-    #
-    # # 写入表头
-    # headers = export_data["headers"]
-    # for col, header in enumerate(headers):
-    #     worksheet.write(0, col, header)
-    #
-    # # 写入数据
-    # records = export_data["records"]
-    # for row, record in enumerate(records, start=1):
-    #     for col, header in enumerate(headers):
-    #         worksheet.write(row, col, record.get(header, ""))
-    #
-    # workbook.close()
-    # output.seek(0)
-    #
-    # # 返回Excel文件流
-    # return StreamingResponse(
-    #     output,
-    #     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    #     headers={
-    #         "Content-Disposition": "attachment; filename=test_records_export.xlsx"
-    #     },
-    # )
 
     # 限制最多同时3个导出任务
     EXPORT_SEM = asyncio.Semaphore(3)

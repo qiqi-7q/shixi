@@ -23,6 +23,7 @@ class VehicleStatus(str, enum.Enum):
     BORROWED = "已借出"
     MAINTENANCE = "维护中"
     RESERVED = "已预定"
+    LONGLOAN = "长期借用"
 
 
 class VehicleGroup(str, enum.Enum):
@@ -44,19 +45,19 @@ class TestStatus(str, enum.Enum):
 class Vehicle(Base):
     __tablename__ = "vehicles"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, comment="主键ID")
     model = Column(String(100), comment="车型")
-    group = Column(Enum(VehicleGroup), default=VehicleGroup.DRIVEING, comment="组别")
+    group = Column(Enum(VehicleGroup,native_enum=False, length=64), default=VehicleGroup.DRIVEING, comment="组别")
     vehicle_stage = Column(String(20), comment="车辆阶段")
     configuration = Column(String(200), comment="车辆配置")
     owner_name = Column(String(100), comment="车主权限")
     vehicle_code = Column(String(50), index=True, comment="车辆编号")
     parking_location = Column(String(200), comment="停车地点")
     vehicle_status = Column(
-        Enum(VehicleStatus), default=VehicleStatus.AVAILABLE, comment="使用状态"
+        Enum(VehicleStatus, native_enum=False, length=64), default=VehicleStatus.AVAILABLE, comment="使用状态"
     )
     test_status = Column(
-        Enum(TestStatus), default=TestStatus.ALL_SUPPORT, comment="车辆状态"
+        Enum(TestStatus, native_enum=False, length=64), default=TestStatus.ALL_SUPPORT, comment="车辆状态"
     )
     remarks = Column(Text, comment="备注")
     vin_code = Column(
@@ -79,9 +80,9 @@ class Vehicle(Base):
 class BorrowRecord(Base):
     __tablename__ = "borrow_records"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True, comment="主键ID")
     model = Column(String(100), comment="车型")
-    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False,comment="车辆ID")
     vehicle_code = Column(String(50), comment="车辆编号")
     vin_code = Column(String(17), index=True, nullable=False, comment="VIN码")
     borrower = Column(String(100), nullable=False, comment="借用人")
@@ -102,20 +103,3 @@ class BorrowRecord(Base):
     remarks = Column(Text, comment="备注")
     # 关联车辆
     vehicle = relationship("Vehicle", back_populates="borrow_records")
-
-
-# 车辆使用率
-# class UsageRate(Base):
-#     __tablename__ = "usage_rates"
-#
-#     id = Column(Integer, primary_key=True, index=True)
-#     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
-#     vin_code = Column(String(17), index=True, nullable=False, comment="VIN码")
-#     fireStatus = Column(Boolean, default=False, comment="使用状态")
-#     doorState = Column(Boolean, default=False, comment="门状态")
-#     gpsLocation = Column(String(100), comment="GPS位置信息")
-#     batteryPower = Column(Integer, comment="电池电量")
-#     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
-#     updated_at = Column(
-#         DateTime, server_default=func.now(), onupdate=func.now(), comment="最后编辑时间"
-#     )

@@ -26,7 +26,7 @@ async def create_analysis(
     funcMode: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """创建分析数据"""
+    """创建分析数据（支持多版本综合统计）"""
     result = await dataAnalysis.save_to_db(
         db=db, project=project, model=model, version=version, funcMode=funcMode
     )
@@ -62,17 +62,23 @@ async def get_analysis_datas(
     # 将 SQLAlchemy 对象转换为可序列化的字典
     data = []
     for record in records:
-        data.append({
-            "id": record.id,
-            "project": record.project,
-            "carModel": record.carModel,
-            "version": record.version,
-            "funcMode": record.funcMode,
-            "kpiMileage": float(record.kpiMileage),
-            "totalScore": float(record.totalScore),
-            "createTime": record.createTime.isoformat() if record.createTime else None,
-            "updateTime": record.updateTime.isoformat() if record.updateTime else None,
-        })
+        data.append(
+            {
+                "id": record.id,
+                "project": record.project,
+                "carModel": record.carModel,
+                "version": record.version,
+                "funcMode": record.funcMode,
+                "kpiMileage": float(record.kpiMileage),
+                "totalScore": float(record.totalScore),
+                "createTime": (
+                    record.createTime.isoformat() if record.createTime else None
+                ),
+                "updateTime": (
+                    record.updateTime.isoformat() if record.updateTime else None
+                ),
+            }
+        )
     return {"message": "success", "code": 200, "data": data, "total": total_count}
 
 
@@ -111,6 +117,7 @@ async def delete_analysis(analysis_id: int, db: AsyncSession = Depends(get_db)):
         return {"message": "分析删除成功", "code": 200, "data": None}
     else:
         return {"message": result, "code": 400, "data": None}
+
 
 # ==================== 可视化统计接口 ====================
 @router.get("/stats/overview")
@@ -151,6 +158,7 @@ async def get_version_stats_route(
         "message": "获取版本得分统计成功",
     }
 
+
 @router.put("/update_success_rate")
 async def update_success_rate(
     request: UpdateSuccessRateRequest,
@@ -158,7 +166,7 @@ async def update_success_rate(
 ):
     """
     手动更新NAP成功率指标并重新计算KPI得分
-    
+
     支持用户在前端输入以下指标（0-100的百分比）：
     - 变道成功率
     - 汇入成功率
@@ -166,7 +174,7 @@ async def update_success_rate(
     - 分合流成功率
     - 特殊场景成功率
     - 限速识别成功率
-    
+
     更新范围：kpi_item、kpi_main、kpi_module 三个表的得分都会更新
     """
     result = await dataAnalysis.update_success_rate(

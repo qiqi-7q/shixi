@@ -19,11 +19,12 @@ from app.utils.handle_excel_testrecord import (
 )
 from app.utils.build_condition import build_condition
 from datetime import datetime, date, time, timezone, timedelta
+from app.utils.upload_files import upload_files_general
 
 
 # 创建
 async def create_test_record(
-    db: AsyncSession, record: schemas.TestRecordCreate, current_user: User
+    db: AsyncSession, record: schemas.TestRecordCreate, current_user: User, files=None
 ):
     record.creator = current_user.full_name
     record.creator_id = current_user.id
@@ -31,7 +32,36 @@ async def create_test_record(
     db.add(db_record)
     await db.commit()
     await db.refresh(db_record)
+
+    if files and files[0].filename:
+        saved_paths = await upload_files_general(
+            files, "test_records", db_record.id, overwrite=False
+        )
+        if saved_paths:
+            db_record.analyze_attach = saved_paths
+            await db.commit()
+            await db.refresh(db_record)
     return "success"
+
+
+async def get_field_options(db: AsyncSession) -> dict:
+    """获取 project、car_type、software_version 的去重列表，供前端下拉框使用"""
+
+    async def get_distinct(column):
+        stmt = (
+            select(func.distinct(column))
+            .where(column.isnot(None))
+            .where(column != "")
+            .order_by(column)
+        )
+        result = await db.execute(stmt)
+        return [row[0] for row in result.all()]
+
+    return {
+        "projects": await get_distinct(models.TestRecord.project),
+        "car_types": await get_distinct(models.TestRecord.car_type),
+        "software_versions": await get_distinct(models.TestRecord.software_version),
+    }
 
 
 async def get_test_records_adv(
@@ -63,7 +93,7 @@ async def get_test_records_adv(
     total_result = await db.execute(total_stmt)
     total = total_result.scalar_one()
 
-    stmt = stmt.offset(skip).limit(limit).order_by(models.TestRecord.id.desc())
+    stmt = stmt.order_by(models.TestRecord.id.desc()).offset(skip).limit(limit)
     result = await db.execute(stmt)
     return {
         "items": list(result.scalars().all()),
@@ -134,8 +164,9 @@ async def get_test_record(db: AsyncSession, record_id: int):
 
 # 更新
 async def update_test_record(
-    db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate
+    db: AsyncSession, record_id: int, record: schemas.TestRecordUpdate, files=None
 ):
+    from sqlalchemy.orm.attributes import flag_modified
 
     db_record = await db.get(models.TestRecord, record_id)
     if not db_record:
@@ -144,6 +175,23 @@ async def update_test_record(
     update_data = record.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(db_record, key, value)
+        if key == "analyze_attach":
+            flag_modified(db_record, "analyze_attach")
+
+    if files and files[0].filename:
+        saved_paths = await upload_files_general(
+            files, "test_records", record_id, overwrite=False
+        )
+        if saved_paths:
+            if db_record.analyze_attach:
+                existing_paths = list(db_record.analyze_attach)
+                for path in saved_paths:
+                    if path not in existing_paths:
+                        existing_paths.append(path)
+                db_record.analyze_attach = existing_paths
+            else:
+                db_record.analyze_attach = saved_paths
+            flag_modified(db_record, "analyze_attach")
 
     await db.commit()
     await db.refresh(db_record)
@@ -795,6 +843,9 @@ async def batch_export_records(
             # 如果是日期时间类型，转换为字符串格式
             elif isinstance(value, (datetime, date, time)):
                 record_dict[cn_header] = value.strftime("%Y-%m-%d %H:%M:%S")
+            # 如果是列表，将其中元素转换为字符串格式（逗号分隔）
+            elif isinstance(value, list):
+                record_dict[cn_header] = ",".join(map(str, value))
             else:
                 record_dict[cn_header] = value
         record_dicts.append(record_dict)

@@ -21,7 +21,7 @@ class DriverMonitor(Base):
     test_start_time = Column(DateTime, nullable=False, comment="测试开始时间")
     test_end_time = Column(DateTime, nullable=False, comment="测试结束时间")
     driver_status = Column(
-        Enum(DriverStatus),
+        Enum(DriverStatus, native_enum=False, length=64),
         default=DriverStatus.NORMAL,
         nullable=False,
         comment="司机状态",

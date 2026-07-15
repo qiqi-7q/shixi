@@ -2,6 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.plugins.test_record_plugin.test_record_tasks import refresh_data_links_job
 from app.plugins.vehicle_plugin.vehicle_tasks import re_vs_task, re_bs_task
+from app.plugins.vehicle_monitor_plugin.vehicle_monitor_tasks import re_vm_task
 
 job_defaults = {
     "replace_existing": True,
@@ -35,16 +36,15 @@ scheduler.add_job(
     minute="00",
 )
 
-# trigger = ("cron",)   #每天0点30分刷新一次车辆状态
-# hour = ("0",)
-# minute = ("30",)
-
-# trigger = ("cron",) #每两小时整点刷新，固定整点执行（0、2、4…）
-# hour = ("*/2",)
-# minute = ("00",)
-
-# trigger = ("interval",) #从任务启动时刻算起，每两小时刷新
-# hours = (2,)
+scheduler.add_job(
+    id="refresh_vehicle_monitor_info",
+    name="定时刷新车辆监控信息",
+    func=re_vm_task,
+    replace_existing=True,
+    trigger="cron",
+    hour="7",
+    minute="30",
+)
 
 
 # # 添加定时任务：每2小时刷新一次数据链接

@@ -448,7 +448,7 @@ class APIClient:
         if not file_path:
             raise ValueError("no $TrainParamsJson")
         try:
-            with open(file_path, 'r') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 content = json.load(f)
             return content.get('token')
         except Exception as e:
@@ -460,10 +460,10 @@ class APIClient:
         if not file_path:
             raise ValueError("no $TrainParamsJson")
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
             data['token'] = new_token
-            with open(file_path, 'w') as file:
+            with open(file_path, 'w', encoding='utf-8') as file:
                 json.dump(data, file, indent=4)
         except Exception as e:
             raise ValueError(f"Failed to update token in file: {e}")

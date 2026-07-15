@@ -1,21 +1,33 @@
-from datetime import date
+import time
 from typing import List, Optional
-
 from fastapi import APIRouter, Depends, Query, UploadFile
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.plugins.auth_plugin.models import User
-from app.plugins.auth_plugin.router import get_current_user
+from app.plugins.auth_plugin.router import get_current_user, require_vehicle_add
 from app.plugins.vehicle_plugin import models, schemas, services
 
 router = APIRouter()
 
 
 # ============= 静态路由放在前面 =============
+@router.get("/models")
+async def get_vehicle_models(
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有车型"""
+    model_list = await services.VehicleService.get_vehicle_models(db)
+    return {"data": model_list}
 
+@router.get("/model_distribution")
+async def get_model_distribution(
+    db: AsyncSession = Depends(get_db),
+):
+    """获取车型分布"""
+    model_list = await services.VehicleService.model_distribution(db)
+    return {"data": model_list, "message": "success", "code": 200}
 
 @router.get("/stats/overview")
 async def get_vehicle_overview(
@@ -27,12 +39,6 @@ async def get_vehicle_overview(
         None, description="使用状态（可借用/已借出/维护中/已预定）"
     ),
     test_status: Optional[str] = Query(None, description="车辆状态"),
-    start_date: Optional[str] = Query(
-        None, description="统计起始日期（格式：YYYY-MM-DD）"
-    ),
-    end_date: Optional[str] = Query(
-        None, description="统计截止日期（格式：YYYY-MM-DD）"
-    ),
 ):
     """获取车辆概览统计（卡片数据）"""
     stats = await services.VehicleStatsService.get_vehicle_overview(
@@ -42,8 +48,6 @@ async def get_vehicle_overview(
         group=group,
         vehicle_status=vehicle_status,
         test_status=test_status,
-        start_date=start_date,
-        end_date=end_date,
     )
     return {"data": stats, "message": "success", "code": 200}
 
@@ -112,6 +116,10 @@ async def get_vehicles(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     conditions: Optional[List[dict]] = None,
+    sort_by: Optional[str] = Query(None, description="排序字段名（不提供则不排序）"),
+    sort_order: Optional[str] = Query(
+        "asc", description="排序方向：asc（升序，默认）/ desc（降序）"
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """获取车辆列表（高级查询）"""
@@ -188,31 +196,8 @@ async def get_vehicles(
         skip=skip,
         limit=limit,
         conditions=conditions,
-    )
-    return {"data": vehicleData, "message": "success", "code": 200}
-
-
-@router.get("/fixsearch")
-async def get_vehicles_simple(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    vehicle_status: Optional[str] = None,
-    vin_code: Optional[str] = None,
-    group: Optional[str] = None,
-    model: Optional[str] = None,
-    test_status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    """获取车辆列表（固定字段查询）"""
-    vehicleData = await services.VehicleService.get_vehicles_simple(
-        db,
-        skip=skip,
-        limit=limit,
-        group=group,
-        vehicle_status=vehicle_status,
-        vin_code=vin_code,
-        model=model,
-        test_status=test_status,
+        sort_by=sort_by,
+        sort_order=sort_order,
     )
 
     return {"data": vehicleData, "message": "success", "code": 200}
@@ -221,8 +206,7 @@ async def get_vehicles_simple(
 @router.post("/createvehicle")
 async def create_vehicle(
     vehicle: schemas.VehicleCreate,
-    db: AsyncSession = Depends(get_db),
-    # current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db)
 ):
     """创建车辆"""
     result = await services.VehicleService.create_vehicle(db, vehicle)
@@ -345,29 +329,6 @@ async def get_borrow_status_distribution(
 
 
 # ============= 列表路由 =============
-@borrow_router.get("/fixsearch")
-async def get_borrow_records_simple(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    model: Optional[str] = None,
-    vin_code: Optional[str] = None,
-    borrow_status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-    driver_name: Optional[str] = None,
-):
-    """获取借用记录列表"""
-    records = await services.BorrowService.get_borrow_records_simple(
-        db,
-        skip=skip,
-        limit=limit,
-        model=model,
-        vin_code=vin_code,
-        borrow_status=borrow_status,
-        driver_name=driver_name,
-    )
-    return {"data": records, "message": "success", "code": 200}
-
-
 # 借用记录时间字段
 BORROW_TIME_FIELDS = {"created_at", "updated_at", "borrow_time"}
 
@@ -464,6 +425,16 @@ async def borrowed_records(
     return {"data": existing_borrows, "message": "success", "code": 200}
 
 
+@borrow_router.post("/borrowedriver")
+async def borrow_driver(
+    db: AsyncSession = Depends(get_db),
+    # current_user: User = Depends(get_current_user)
+):
+    """获取内照处于有效期内的司机的id和姓名,以当前日期为准,根据id asc排序"""
+    dr_re = await services.BorrowService.get_dcv(db)
+    return {"data": dr_re, "message": "success", "code": 200}
+
+
 @borrow_router.post("/createborrow")
 async def create_borrow_record(
     borrow: schemas.BorrowRecordCreate,
@@ -471,8 +442,8 @@ async def create_borrow_record(
     current_user: User = Depends(get_current_user),
 ):
     """创建借用记录"""
-    if not current_user:
-        return {"message": "用户未登录，请先登录", "code": 401, "data": None}
+    # if not current_user:
+    #     return {"message": "token已失效，请重新登录", "code": 401, "data": None}
     result = await services.BorrowService.create_borrow_record(db, borrow, current_user)
     if result == "success":
         return {
