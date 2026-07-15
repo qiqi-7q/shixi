@@ -42,8 +42,8 @@ scheduler.add_job(
     func=re_vm_task,
     replace_existing=True,
     trigger="cron",
-    hour="11",
-    minute="02",
+    hour="7",
+    minute="30",
 )
 
 
