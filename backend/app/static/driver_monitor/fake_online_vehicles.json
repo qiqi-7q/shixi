@@ -1,0 +1,20 @@
+[
+  {
+    "vehicleGuid": 14307,
+    "vehicleNo": "527086498786",
+    "devNo": "527086498786",
+    "adminGuid": 20,
+    "deviceProtocolType": 1,
+    "isOnline": true,
+    "updateTime": 0
+  },
+  {
+    "vehicleGuid": 14349,
+    "vehicleNo": "527086468243",
+    "devNo": "527086468243",
+    "adminGuid": 20,
+    "deviceProtocolType": 1,
+    "isOnline": true,
+    "updateTime": 0
+  }
+]

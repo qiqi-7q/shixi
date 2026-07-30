@@ -21,33 +21,9 @@ async def get_user_permissions(user: models.User) -> list[str]:
 class PermissionService:
 
     @staticmethod
-    async def get_all_permissions(
-        db: AsyncSession,
-        platform_uuid: Optional[str] = None,
-    ) -> List[models.Permission]:
-        """获取权限列表
-        - platform_uuid 为 None：返回所有权限
-        - platform_uuid 指定值：返回该平台的所有权限
-        """
-        from sqlalchemy import or_
-        stmt = select(models.Permission)
-        if platform_uuid:
-            stmt = stmt.where(
-                or_(
-                    models.Permission.platform_uuid == platform_uuid,
-                    models.Permission.platform_uuid.is_(None),
-                )
-            )
-        stmt = stmt.order_by(models.Permission.id)
-        result = await db.execute(stmt)
-        return result.scalars().all()
-
-
-class PlatformService:
-
-    @staticmethod
-    async def get_platforms(db: AsyncSession) -> List[models.Platform]:
-        stmt = select(models.Platform).order_by(models.Platform.id)
+    async def get_all_permissions(db: AsyncSession) -> List[models.Permission]:
+        """获取所有权限"""
+        stmt = select(models.Permission).order_by(models.Permission.id)
         result = await db.execute(stmt)
         return result.scalars().all()
 
@@ -55,7 +31,7 @@ class PlatformService:
 class RoleService:
 
     @staticmethod
-    async def get_roles(db: AsyncSession, skip: int = 0, limit: int = 100, sort_by: str = "level", sort_order: str = "desc", search: str = None, platform_uuid: str = None, current_role_code: Optional[str] = None):
+    async def get_roles(db: AsyncSession, skip: int = 0, limit: int = 100, sort_by: str = "level", sort_order: str = "desc", search: str = None, current_role_code: Optional[str] = None):
         from sqlalchemy import func, or_
         allowed_sort = {"id", "level", "code", "name", "create_at"}
         if sort_by not in allowed_sort:
@@ -70,15 +46,19 @@ class RoleService:
             select(models.Role)
             .options(selectinload(models.Role.permissions))
         )
-        if platform_uuid:
-            stmt = stmt.where(models.Role.platform_uuid == platform_uuid)
         if current_role_code is not None:
             current_permission = AuthService._get_role_permission_level(current_role_code)
             allowed_codes = [code for code, level in AuthService.ROLE_PERMISSION_ORDER.items() if (level >= current_permission if current_role_code == "superuser" else level > current_permission)]
+            default_codes = list(AuthService.ROLE_PERMISSION_ORDER.keys())
             if allowed_codes:
-                stmt = stmt.where(models.Role.code.in_(allowed_codes))
+                stmt = stmt.where(
+                    or_(
+                        models.Role.code.in_(allowed_codes),
+                        ~models.Role.code.in_(default_codes)
+                    )
+                )
             else:
-                stmt = stmt.where(models.Role.id == -1)
+                stmt = stmt.where(~models.Role.code.in_(default_codes))
         if search:
             stmt = stmt.where(
                 or_(
@@ -89,15 +69,19 @@ class RoleService:
         stmt = stmt.order_by(sort_col, models.Role.id).offset(skip).limit(limit)
 
         count_stmt = select(func.count(models.Role.id))
-        if platform_uuid:
-            count_stmt = count_stmt.where(models.Role.platform_uuid == platform_uuid)
         if current_role_code is not None:
             current_permission = AuthService._get_role_permission_level(current_role_code)
             allowed_codes = [code for code, level in AuthService.ROLE_PERMISSION_ORDER.items() if (level >= current_permission if current_role_code == "superuser" else level > current_permission)]
+            default_codes = list(AuthService.ROLE_PERMISSION_ORDER.keys())
             if allowed_codes:
-                count_stmt = count_stmt.where(models.Role.code.in_(allowed_codes))
+                count_stmt = count_stmt.where(
+                    or_(
+                        models.Role.code.in_(allowed_codes),
+                        ~models.Role.code.in_(default_codes)
+                    )
+                )
             else:
-                count_stmt = count_stmt.where(models.Role.id == -1)
+                count_stmt = count_stmt.where(~models.Role.code.in_(default_codes))
         if search:
             count_stmt = count_stmt.where(
                 or_(
@@ -115,7 +99,7 @@ class RoleService:
         }
 
     @staticmethod
-    async def get_roles_all(db: AsyncSession, sort_by: str = "level", sort_order: str = "desc", search: str = None, platform_uuid: str = None, current_role_code: Optional[str] = None):
+    async def get_roles_all(db: AsyncSession, sort_by: str = "level", sort_order: str = "desc", search: str = None, current_role_code: Optional[str] = None):
         from sqlalchemy import or_
         allowed_sort = {"id", "level", "code", "name", "create_at"}
         if sort_by not in allowed_sort:
@@ -130,15 +114,19 @@ class RoleService:
             select(models.Role)
             .options(selectinload(models.Role.permissions))
         )
-        if platform_uuid:
-            stmt = stmt.where(models.Role.platform_uuid == platform_uuid)
         if current_role_code is not None:
             current_permission = AuthService._get_role_permission_level(current_role_code)
             allowed_codes = [code for code, level in AuthService.ROLE_PERMISSION_ORDER.items() if (level >= current_permission if current_role_code == "superuser" else level > current_permission)]
+            default_codes = list(AuthService.ROLE_PERMISSION_ORDER.keys())
             if allowed_codes:
-                stmt = stmt.where(models.Role.code.in_(allowed_codes))
+                stmt = stmt.where(
+                    or_(
+                        models.Role.code.in_(allowed_codes),
+                        ~models.Role.code.in_(default_codes)
+                    )
+                )
             else:
-                stmt = stmt.where(models.Role.id == -1)
+                stmt = stmt.where(~models.Role.code.in_(default_codes))
         if search:
             stmt = stmt.where(
                 or_(
@@ -162,45 +150,36 @@ class RoleService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_role_by_uuid(db: AsyncSession, role_uuid: str):
-        stmt = (
-            select(models.Role)
-            .options(selectinload(models.Role.permissions))
-            .where(models.Role.uuid == role_uuid)
-        )
-        result = await db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def create_role(db: AsyncSession, role_data: schemas.RoleCreate, create_by: str = None):
-        # 同平台下角色 code 唯一
+    async def create_role(db: AsyncSession, role_data: schemas.RoleCreate, current_user: models.User = None):
         exist = await db.execute(
-            select(models.Role).where(
-                models.Role.code == role_data.code,
-                models.Role.platform_uuid == role_data.platform_uuid,
-            )
+            select(models.Role).where(models.Role.code == role_data.code)
         )
         if exist.scalar_one_or_none():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="该平台下角色 code 已存在")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="角色 code 已存在")
+
+        if current_user and current_user.role_rel:
+            if role_data.level <= current_user.role_rel.level:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="无权创建同级或更高级别的角色",
+                )
+
         role = models.Role(
             code=role_data.code, name=role_data.name, description=role_data.description,
-            platform_uuid=role_data.platform_uuid, level=role_data.level,
-            create_by=create_by,
+            level=role_data.level, create_by=current_user.username if current_user else None,
         )
         if role_data.permission_ids:
             perm_result = await db.execute(
                 select(models.Permission).where(models.Permission.id.in_(role_data.permission_ids))
             )
-            permissions = perm_result.scalars().all()
-            RoleService._validate_permission_platform(permissions, role_data.platform_uuid)
-            role.permissions = permissions
+            role.permissions = perm_result.scalars().all()
         db.add(role)
         await db.commit()
         await db.refresh(role)
         return role
 
     @staticmethod
-    async def update_role(db: AsyncSession, role_id: int, role_data: schemas.RoleUpdate, update_by: str = None):
+    async def update_role(db: AsyncSession, role_id: int, role_data: schemas.RoleUpdate, current_user: models.User = None):
         stmt = (
             select(models.Role)
             .options(selectinload(models.Role.permissions))
@@ -210,67 +189,68 @@ class RoleService:
         role = result.scalar_one_or_none()
         if not role:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="角色不存在")
-        if role_data.code is not None:
+
+        if current_user and current_user.role_rel:
+            if role.level <= current_user.role_rel.level:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="无权修改同级或更高级别的角色",
+                )
+            if role_data.level is not None and role_data.level <= current_user.role_rel.level:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="无权将角色设置为同级或更高级别",
+                )
+
+        if role_data.code is not None and role_data.code != role.code:
+            if role.code in ("superuser", "admin", "user", "visitor"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"系统默认角色 '{role.code}' 不可修改 code",
+                )
+            exist = await db.execute(
+                select(models.Role).where(models.Role.code == role_data.code)
+            )
+            if exist.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"角色 code '{role_data.code}' 已存在",
+                )
             role.code = role_data.code
         if role_data.name is not None:
             role.name = role_data.name
         if role_data.description is not None:
             role.description = role_data.description
-        if role_data.platform_uuid is not None:
-            role.platform_uuid = role_data.platform_uuid
         if role_data.level is not None:
             role.level = role_data.level
-        if update_by:
-            role.update_by = update_by
+        if current_user:
+            role.update_by = current_user.username
         if role_data.permission_ids is not None:
             perm_result = await db.execute(
                 select(models.Permission).where(models.Permission.id.in_(role_data.permission_ids))
             )
-            permissions = perm_result.scalars().all()
-            RoleService._validate_permission_platform(permissions, role.platform_uuid)
-            role.permissions = permissions
+            role.permissions = perm_result.scalars().all()
         await db.commit()
         await db.refresh(role)
         return role
 
     @staticmethod
-    def _validate_permission_platform(permissions, platform_uuid: str):
-        """校验权限是否属于当前平台"""
-        platform_uuid_str = str(platform_uuid) if platform_uuid else None
-        invalid = [
-            p for p in permissions
-            if p.platform_uuid is not None and str(p.platform_uuid) != platform_uuid_str
-        ]
-        if invalid:
-            codes = [p.code for p in invalid]
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"以下权限不属于该平台：{', '.join(codes)}",
-            )
-
-    # 不可删除的系统默认角色 code
-    PROTECTED_ROLE_CODES = {
-        models.UserRole.SUPERUSER.value,
-        models.UserRole.ADMIN.value,
-        models.UserRole.USER.value,
-        models.UserRole.VISITOR.value,
-    }
-
-    @staticmethod
-    async def delete_role(db: AsyncSession, role_id: int, platform_uuid: str = None):
+    async def delete_role(db: AsyncSession, role_id: int, current_user: models.User = None):
         role = await db.get(models.Role, role_id)
         if not role:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="角色不存在")
-        if platform_uuid and str(role.platform_uuid) != platform_uuid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="只能删除本平台下的角色",
-            )
         if role.code in ("superuser", "admin", "user", "visitor"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"系统默认角色 '{role.code}' 不可删除",
             )
+
+        if current_user and current_user.role_rel:
+            if role.level <= current_user.role_rel.level:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="无权删除同级或更高级别的角色",
+                )
 
         await db.delete(role)
         await db.commit()
@@ -300,36 +280,29 @@ class AuthService:
         return encoded_jwt
 
     @staticmethod
-    async def authenticate_user(db: AsyncSession, username: str, password: str, platform_uuid: str = None):
+    async def authenticate_user(db: AsyncSession, username: str, password: str):
         stmt = (
             select(models.User)
             .options(selectinload(models.User.role_rel).selectinload(models.Role.permissions))
             .where(models.User.username == username)
         )
-        if platform_uuid:
-            stmt = stmt.where(models.User.platform_uuid == platform_uuid)
         result = await db.execute(stmt)
         user = result.scalar_one_or_none()
         if not user:
             return False
-        if user.is_oa_account:
-            return user
         if not user.password or not AuthService.verify_password(password, user.password):
             return False
         return user
 
     @staticmethod
-    async def create_user(db: AsyncSession, user: schemas.UserCreate, platform_uuid: str = None):
+    async def create_user(db: AsyncSession, user: schemas.UserCreate):
         stmt = select(models.User).where(models.User.username == user.username)
         result = await db.execute(stmt)
         if result.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号已存在")
 
         default_role_result = await db.execute(
-            select(models.Role).where(
-                models.Role.code == models.UserRole.USER.value,
-                models.Role.platform_uuid == platform_uuid,
-            )
+            select(models.Role).where(models.Role.code == models.UserRole.USER.value)
         )
         default_role = default_role_result.scalar_one_or_none()
 
@@ -339,8 +312,7 @@ class AuthService:
                 password=AuthService.get_password_hash(user.password),
                 full_name=user.full_name,
                 email=user.email,
-                platform_uuid=platform_uuid,
-                role_uuid=default_role.uuid if default_role else None,
+                role_id=default_role.id if default_role else None,
             )
             db.add(db_user)
             await db.commit()
@@ -356,10 +328,9 @@ class AuthService:
             skip: int = 0,
             limit: int = 100,
             role_name: Optional[str] = None,
-            platform_uuid: Optional[str] = None,
             current_role_code: Optional[str] = None,
     ):
-        from sqlalchemy import func
+        from sqlalchemy import func, or_
 
         stmt = select(models.User).options(
             selectinload(models.User.role_rel).selectinload(models.Role.permissions)
@@ -369,25 +340,29 @@ class AuthService:
         if role_name:
             stmt = stmt.join(models.User.role_rel).where(models.Role.code == role_name)
             count_stmt = count_stmt.join(models.User.role_rel).where(models.Role.code == role_name)
-        
-        if platform_uuid:
-            stmt = stmt.where(models.User.platform_uuid == platform_uuid)
-            count_stmt = count_stmt.where(models.User.platform_uuid == platform_uuid)
 
         if current_role_code is not None:
             current_permission = AuthService._get_role_permission_level(current_role_code)
             operator = "__ge__" if current_role_code == "superuser" else "__gt__"
             allowed_codes = [code for code, level in AuthService.ROLE_PERMISSION_ORDER.items() if getattr(level, operator)(current_permission)]
+            default_codes = list(AuthService.ROLE_PERMISSION_ORDER.keys())
             if role_name and role_name not in allowed_codes:
-                stmt = stmt.where(models.User.id == -1)
-                count_stmt = count_stmt.where(models.User.id == -1)
+                if role_name in AuthService.ROLE_PERMISSION_ORDER:
+                    stmt = stmt.where(models.User.id == -1)
+                    count_stmt = count_stmt.where(models.User.id == -1)
             elif not role_name and allowed_codes:
-                allowed_uuids_subq = select(models.Role.uuid).where(models.Role.code.in_(allowed_codes))
-                stmt = stmt.where(models.User.role_uuid.in_(allowed_uuids_subq))
-                count_stmt = count_stmt.where(models.User.role_uuid.in_(allowed_uuids_subq))
+                allowed_ids_subq = select(models.Role.id).where(
+                    or_(
+                        models.Role.code.in_(allowed_codes),
+                        ~models.Role.code.in_(default_codes)
+                    )
+                )
+                stmt = stmt.where(models.User.role_id.in_(allowed_ids_subq))
+                count_stmt = count_stmt.where(models.User.role_id.in_(allowed_ids_subq))
             elif not role_name and not allowed_codes:
-                stmt = stmt.where(models.User.id == -1)
-                count_stmt = count_stmt.where(models.User.id == -1)
+                allowed_ids_subq = select(models.Role.id).where(~models.Role.code.in_(default_codes))
+                stmt = stmt.where(models.User.role_id.in_(allowed_ids_subq))
+                count_stmt = count_stmt.where(models.User.role_id.in_(allowed_ids_subq))
 
         total_result = await db.execute(count_stmt)
         total = total_result.scalar_one()
@@ -404,12 +379,11 @@ class AuthService:
             limit: int = 10,
             username: Optional[str] = None,
             role_name: Optional[str] = None,
-            platform_uuid: Optional[str] = None,
             sort_by: Optional[str] = None,
             sort_order: Optional[str] = None,
             current_role_code: Optional[str] = None,
     ):
-        from sqlalchemy import func
+        from sqlalchemy import func, or_
 
         stmt = select(models.User).options(
             selectinload(models.User.role_rel).selectinload(models.Role.permissions)
@@ -422,54 +396,51 @@ class AuthService:
         if role_name:
             stmt = stmt.join(models.User.role_rel).where(models.Role.code == role_name)
             count_stmt = count_stmt.join(models.User.role_rel).where(models.Role.code == role_name)
-        if platform_uuid:
-            stmt = stmt.where(models.User.platform_uuid == platform_uuid)
-            count_stmt = count_stmt.where(models.User.platform_uuid == platform_uuid)
 
         if current_role_code is not None:
             current_permission = AuthService._get_role_permission_level(current_role_code)
             operator = "__ge__" if current_role_code == "superuser" else "__gt__"
             allowed_codes = [code for code, level in AuthService.ROLE_PERMISSION_ORDER.items() if getattr(level, operator)(current_permission)]
+            default_codes = list(AuthService.ROLE_PERMISSION_ORDER.keys())
             if role_name and role_name not in allowed_codes:
-                stmt = stmt.where(models.User.id == -1)
-                count_stmt = count_stmt.where(models.User.id == -1)
+                if role_name in AuthService.ROLE_PERMISSION_ORDER:
+                    stmt = stmt.where(models.User.id == -1)
+                    count_stmt = count_stmt.where(models.User.id == -1)
             elif not role_name and allowed_codes:
-                allowed_uuids_subq = select(models.Role.uuid).where(models.Role.code.in_(allowed_codes))
-                stmt = stmt.where(models.User.role_uuid.in_(allowed_uuids_subq))
-                count_stmt = count_stmt.where(models.User.role_uuid.in_(allowed_uuids_subq))
+                allowed_ids_subq = select(models.Role.id).where(
+                    or_(
+                        models.Role.code.in_(allowed_codes),
+                        ~models.Role.code.in_(default_codes)
+                    )
+                )
+                stmt = stmt.where(models.User.role_id.in_(allowed_ids_subq))
+                count_stmt = count_stmt.where(models.User.role_id.in_(allowed_ids_subq))
             elif not role_name and not allowed_codes:
-                stmt = stmt.where(models.User.id == -1)
-                count_stmt = count_stmt.where(models.User.id == -1)
+                allowed_ids_subq = select(models.Role.id).where(~models.Role.code.in_(default_codes))
+                stmt = stmt.where(models.User.role_id.in_(allowed_ids_subq))
+                count_stmt = count_stmt.where(models.User.role_id.in_(allowed_ids_subq))
 
         total_result = await db.execute(count_stmt)
         total = total_result.scalar_one()
 
-        # 1. 前置统一处理排序参数，消除分支差异逻辑
-        # 默认排序字段、升降序
         default_sort = "id"
         default_desc = True
         sort_expr = None
 
-        # 处理空排序场景
         if not sort_by:
             sort_by = default_sort
             is_desc = default_desc
         else:
-            # 字段白名单校验
             if sort_by not in schemas.USER_WHITELIST:
                 sort_by = "username"
-            # 校验排序方向
             valid_order = sort_order.lower() if sort_order else "asc"
             is_desc = valid_order == "desc" if valid_order in ("asc", "desc") else False
 
-        # 普通字段原生排序
         sort_expr = getattr(models.User, sort_by)
 
-        # 升降序统一处理
         order_clause = sort_expr.desc() if is_desc else sort_expr.asc()
         stmt = stmt.order_by(order_clause).offset(skip).limit(limit)
 
-        # 3. 查询逻辑全局只写一次，无重复
         result = await db.execute(stmt)
         data_list = [AuthService._user_to_response(u).model_dump(mode="json") for u in result.scalars().all()]
 
@@ -480,31 +451,28 @@ class AuthService:
         permissions = []
         role_name = None
         role_code = None
+        role_id = None
         if user.role_rel:
             role_name = user.role_rel.name
+            role_id = user.role_rel.id
             role_code = user.role_rel.code
             permissions = [p.code for p in user.role_rel.permissions]
         return schemas.UserResponse(
-            id=user.id, uuid=str(user.uuid),
+            id=user.id,
             username=user.username,
             email=user.email, full_name=user.full_name,
-            is_active=user.is_active, is_oa_account=user.is_oa_account,
-            platform_uuid=str(user.platform_uuid),
-            role_uuid=str(user.role_uuid) if user.role_uuid else None,
+            is_active=user.is_active,
+            role_id=role_id,
             role_name=role_name, role=role_code, permissions=permissions,
             create_at=user.create_at, update_at=user.update_at,
             create_by=user.create_by, update_by=user.update_by,
         )
 
-    # 角色权限排序（基于 code 字段），数字越小权限越高
     ROLE_PERMISSION_ORDER = {
         "superuser": 0,
         "admin": 1,
         "user": 2,
         "visitor": 3,
-        "manager": 4,
-        "tester": 5,
-        "viewer": 6,
     }
 
     @staticmethod
@@ -514,20 +482,13 @@ class AuthService:
 
     @staticmethod
     def _check_role_hierarchy(current_user: models.User, target_user: models.User, action: str = "操作"):
-        """校验角色层级（基于 code + 平台隔离），防止越级/跨平台操作"""
+        """校验角色层级（基于 code），防止越级操作"""
         if not current_user.role_rel or not target_user.role_rel:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="角色信息缺失")
-
-        if current_user.platform_uuid != target_user.platform_uuid:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"无权跨平台{action}其他平台用户",
-            )
 
         current_level = AuthService._get_role_permission_level(current_user.role_rel.code)
         target_level = AuthService._get_role_permission_level(target_user.role_rel.code)
 
-        # 只能操作等级比自己低的用户（严格小于），同级之间不可互操作
         if current_level >= target_level:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -547,9 +508,9 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
 
         if current_user:
-            AuthService._check_role_hierarchy(current_user, user, "修改")
+            if current_user.id != user.id:
+                AuthService._check_role_hierarchy(current_user, user, "修改")
 
-            # 超管不能修改其他超管
             if (
                 current_user.role_rel
                 and current_user.role_rel.code == "superuser"
@@ -568,29 +529,31 @@ class AuthService:
             role_code = update_dict.pop("role")
             if role_code:
                 role_result = await db.execute(
-                    select(models.Role).where(
-                        models.Role.code == role_code,
-                        models.Role.platform_uuid == user.platform_uuid,
-                    )
+                    select(models.Role).where(models.Role.code == role_code)
                 )
                 role_obj = role_result.scalar_one_or_none()
                 if not role_obj:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"角色 '{role_code}' 在当前平台不存在",
+                        detail=f"角色 '{role_code}' 不存在",
                     )
-                update_dict["role_uuid"] = role_obj.uuid
+                update_dict["role_id"] = role_obj.id
             else:
-                update_dict["role_uuid"] = None
+                update_dict["role_id"] = None
 
-        if "role_uuid" in update_dict:
-            new_role_uuid = str(update_dict["role_uuid"]) if update_dict["role_uuid"] else None
-            current_role_uuid = str(user.role_uuid) if user.role_uuid else None
-            if new_role_uuid != current_role_uuid:
+        if "role_id" in update_dict:
+            new_role_id = update_dict["role_id"]
+            if new_role_id != user.role_id:
                 if not current_user or not current_user.role_rel or current_user.role_rel.code != "superuser":
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="仅超级管理员可修改用户角色",
+                    )
+                new_role = await db.get(models.Role, new_role_id)
+                if new_role and current_user.role_rel and new_role.level <= current_user.role_rel.level:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="无权将用户设置为同级或更高级别角色",
                     )
 
         if current_user:
@@ -627,36 +590,27 @@ class AuthService:
         if result.scalar_one_or_none():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="账号已存在")
 
-        role_uuid = user.role_uuid
+        role_id = user.role_id
 
         if user.role is not None:
             role_result = await db.execute(
-                select(models.Role).where(
-                    models.Role.code == user.role,
-                    models.Role.platform_uuid == user.platform_uuid,
-                )
+                select(models.Role).where(models.Role.code == user.role)
             )
             found_role = role_result.scalar_one_or_none()
             if found_role:
-                role_uuid = found_role.uuid
+                role_id = found_role.id
 
-        if role_uuid is None:
+        if role_id is None:
             default_role_result = await db.execute(
-                select(models.Role).where(
-                    models.Role.code == models.UserRole.USER.value,
-                    models.Role.platform_uuid == user.platform_uuid,
-                )
+                select(models.Role).where(models.Role.code == models.UserRole.USER.value)
             )
             default_role = default_role_result.scalar_one_or_none()
             if default_role:
-                role_uuid = default_role.uuid
+                role_id = default_role.id
 
-        if current_user and current_user.role_rel and role_uuid is not None:
-            target_role_result = await db.execute(
-                select(models.Role).where(models.Role.uuid == role_uuid)
-            )
-            target_role = target_role_result.scalar_one_or_none()
-            if target_role and target_role.level >= current_user.role_rel.level:
+        if current_user and current_user.role_rel and role_id is not None:
+            target_role = await db.get(models.Role, role_id)
+            if target_role and target_role.level <= current_user.role_rel.level:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="无权创建同级或更高级别角色的用户",
@@ -664,12 +618,11 @@ class AuthService:
 
         try:
             db_user = models.User(
-                username=user.username, platform_uuid=user.platform_uuid,
+                username=user.username,
                 full_name=user.full_name if user.full_name else user.username,
                 email=user.email,
                 password=AuthService.get_password_hash(user.password) if user.password else None,
-                is_oa_account=user.is_oa_account,
-                role_uuid=role_uuid,
+                role_id=role_id,
             )
             if current_user:
                 db_user.create_by = current_user.username
@@ -705,16 +658,13 @@ class AuthService:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_visitor_user(db: AsyncSession, platform_uuid: str):
-        """获取指定平台的游客共享账号（支持 visitor/viewer 角色，A平台用visitor，B平台用viewer）"""
+    async def get_visitor_user(db: AsyncSession):
+        """获取游客共享账号（仅返回启用状态的）"""
         stmt = (
             select(models.User)
             .options(selectinload(models.User.role_rel).selectinload(models.Role.permissions))
             .join(models.User.role_rel)
-            .where(
-                models.User.platform_uuid == platform_uuid,
-                models.Role.code.in_(["visitor", "viewer"]),
-            )
+            .where(models.Role.code == "visitor", models.User.is_active == True)
             .limit(1)
         )
         result = await db.execute(stmt)

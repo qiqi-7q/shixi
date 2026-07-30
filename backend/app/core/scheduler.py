@@ -3,6 +3,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.plugins.test_record_plugin.test_record_tasks import refresh_data_links_job
 from app.plugins.vehicle_plugin.vehicle_tasks import re_vs_task, re_bs_task
 from app.plugins.vehicle_monitor_plugin.vehicle_monitor_tasks import re_vm_task
+from app.plugins.driver_monitor_plugin.driver_monitor_tasks import sync_monitor_data
 
 job_defaults = {
     "replace_existing": True,
@@ -45,7 +46,15 @@ scheduler.add_job(
     hour="7",
     minute="30",
 )
-
+scheduler.add_job(
+    id="sync_monitor_data",
+    name="同步车辆监控数据",
+    func=sync_monitor_data,
+    replace_existing=True,
+    trigger="cron",
+    hour="2",
+    minute="30",
+)
 
 # # 添加定时任务：每2小时刷新一次数据链接
 # scheduler.add_job(
@@ -56,6 +65,7 @@ scheduler.add_job(
 #     trigger="interval",
 #     hours=2,
 # )
+
 
 
 # 封装停止调度器函数

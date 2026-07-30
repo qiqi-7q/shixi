@@ -94,6 +94,15 @@ class Settings(BaseSettings):
     )
     MILEAGE_SERVICE_KEY: str = "3J5FlzV0T132zOW"
 
+    # 智驾车联网平台(iotsmart)配置
+    MONITOR_BASIC_URL: str = "http://pro.iotsmart.net"
+    MONITOR_WS_URL: str = "ws://pro.iotsmart.net"
+    MONITOR_USERNAME: str = "ZJLPKJ"
+    MONITOR_PASSWORD: str = "123456"
+
+    # 高德地图配置（逆地理编码）
+    AMAP_KEY: str = "1a6f7f72b4a469473b4f2eafe170f0f3"
+
     # MinIO配置
     MINIO_HOST:str = "10.192.8.193"
     MINIO_WEB_PORT:int = 8011

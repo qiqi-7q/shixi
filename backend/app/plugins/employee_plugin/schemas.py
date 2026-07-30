@@ -1,6 +1,8 @@
 from pydantic import BaseModel
 from typing import Optional, Literal
 from datetime import datetime, date
+from app.plugins.employee_plugin.models import JobType
+
 
 
 class EmployeeBase(BaseModel):
@@ -8,7 +10,7 @@ class EmployeeBase(BaseModel):
     # 新增字段
     module_name: Optional[str] = None
     module_manager: Optional[str] = None
-    job_type: Optional[Literal["司机", "外协"]] = None
+    job_type: Optional[JobType] = None
     task: Optional[str] = None
     card_validity: Optional[date] = None
 
@@ -22,7 +24,7 @@ class EmployeeUpdate(BaseModel):
     card_validity: Optional[date] = None
     module_name: Optional[str] = None
     module_manager: Optional[str] = None
-    job_type: Optional[Literal["司机", "外协"]] = None
+    job_type: Optional[JobType] = None
     task: Optional[str] = None
 
 

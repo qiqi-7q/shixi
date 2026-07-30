@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>车辆在线状态 SSE 测试</title>
+    <style>
+        body { font-family: Consolas, monospace; margin: 20px; background: #f5f5f5; }
+        .panel { background: #fff; padding: 15px; margin-bottom: 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        h2 { margin-top: 0; color: #333; }
+        input { padding: 6px 10px; width: 500px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 6px 14px; margin-left: 8px; cursor: pointer; border: none; border-radius: 4px; background: #1890ff; color: #fff; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        button.danger { background: #ff4d4f; }
+        #status { font-weight: bold; margin-top: 10px; }
+        #status.connected { color: #52c41a; }
+        #status.disconnected { color: #ff4d4f; }
+        #status.connecting { color: #faad14; }
+        #log { height: 420px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; font-size: 13px; line-height: 1.5; }
+        .msg-list { color: #4af6ff; }
+        .msg-status { color: #52c41a; }
+        .msg-error { color: #ff4d4f; }
+        .msg-info { color: #d4d4d4; }
+        .msg-heartbeat { color: #666; }
+        .stats { display: inline-block; margin-left: 20px; color: #666; }
+        .clear-btn { background: #666; }
+        .note { color: #888; font-size: 12px; margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h2>车辆在线状态 SSE 测试（统一 /sse/sub 入口）</h2>
+        <div>
+            <input id="url" value="http://localhost:8000/sse/sub?username=test_user_001" />
+            <button id="connectBtn" onclick="toggleConnect()">订阅</button>
+            <button class="clear-btn" onclick="clearLog()">清空日志</button>
+            <span class="stats">在线: <span id="onlineCount">-</span> 辆</span>
+            <span class="stats">消息数: <span id="msgCount">0</span></span>
+        </div>
+        <div id="status" class="disconnected">未连接</div>
+        <div class="note">连接 /sse/sub 后，手动调 /api/driver_monitor/ws_start 启动 WS。后端会先尝试连接平台：15秒内连上则推送真实在线列表；如果连不上（内网环境），自动降级推送假数据（2辆车模拟上下线）。25秒无消息会收到心跳。</div>
+    </div>
+
+    <div class="panel">
+        <div id="log"></div>
+    </div>
+
+<script>
+    let es = null;
+    let msgCount = 0;
+    let onlineVehicles = new Map(); // guid -> 车辆信息
+
+    function log(text, cls = 'msg-info') {
+        const logEl = document.getElementById('log');
+        const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        const div = document.createElement('div');
+        div.className = cls;
+        div.textContent = `[${time}] ${text}`;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text, cls) {
+        const el = document.getElementById('status');
+        el.textContent = text;
+        el.className = cls;
+    }
+
+    function updateStats() {
+        document.getElementById('onlineCount').textContent = onlineVehicles.size;
+        document.getElementById('msgCount').textContent = msgCount;
+    }
+
+    function clearLog() {
+        document.getElementById('log').innerHTML = '';
+        onlineVehicles.clear();
+        msgCount = 0;
+        updateStats();
+        log('日志已清空');
+    }
+
+    function toggleConnect() {
+        if (es) {
+            es.close();
+            es = null;
+            log('已主动断开 SSE 连接', 'msg-info');
+            setStatus('已断开', 'disconnected');
+            resetBtn();
+            return;
+        }
+        const url = document.getElementById('url').value;
+        connect(url);
+    }
+
+    function connect(url) {
+        log(`正在订阅: ${url}`);
+        setStatus('连接中...', 'connecting');
+        document.getElementById('connectBtn').textContent = '断开';
+        document.getElementById('connectBtn').classList.add('danger');
+
+        try {
+            es = new EventSource(url);
+        } catch (e) {
+            log(`订阅异常: ${e.message}`, 'msg-error');
+            setStatus('订阅失败', 'disconnected');
+            resetBtn();
+            return;
+        }
+
+        es.onopen = function() {
+            log('SSE 连接已建立，等待消息...（请手动调 /ws_start 启动 WebSocket）', 'msg-status');
+            setStatus('已连接', 'connected');
+        };
+
+        // 初始在线列表（全量）
+        es.addEventListener('vehicle_online_list', function(event) {
+            msgCount++;
+            let data;
+            try { data = JSON.parse(event.data); } catch (e) {
+                log(`vehicle_online_list 解析失败: ${event.data}`, 'msg-error');
+                updateStats();
+                return;
+            }
+            const list = data.data || [];
+            onlineVehicles.clear();
+            list.forEach(v => {
+                const guid = v.vehicleGuid;
+                if (guid !== undefined && guid !== null) onlineVehicles.set(guid, v);
+            });
+            log(`[vehicle_online_list] 当前在线 ${list.length} 辆车`, 'msg-list');
+            log(`  data 原始内容: ${JSON.stringify(data.data)}`, 'msg-list');
+            if (list.length > 0) {
+                list.forEach(v => {
+                    log(`  → vehicleGuid=${v.vehicleGuid}, vehicleNo=${v.vehicleNo}`, 'msg-list');
+                });
+            }
+            updateStats();
+        });
+
+        // 单车上下线推送
+        es.addEventListener('vehicle_status', function(event) {
+            msgCount++;
+            let data;
+            try { data = JSON.parse(event.data); } catch (e) {
+                log(`vehicle_status 解析失败: ${event.data}`, 'msg-error');
+                updateStats();
+                return;
+            }
+            const v = data.data || {};
+            const guid = v.vehicleGuid;
+            const vehNo = v.vehicleNo;
+            const isOnline = v.isOnline === true;
+            log(`[vehicle_status] data 原始内容: ${JSON.stringify(v)}`, isOnline ? 'msg-status' : 'msg-error');
+            if (isOnline) {
+                onlineVehicles.set(guid, v);
+                log(`  → [上线] guid=${guid}, 车牌=${vehNo}`, 'msg-status');
+            } else {
+                onlineVehicles.delete(guid);
+                log(`  → [下线] guid=${guid}, 车牌=${vehNo}, timeLen=${v.timeLen || '-'}`, 'msg-error');
+            }
+            updateStats();
+        });
+
+        // 错误降级提示
+        es.addEventListener('error', function(event) {
+            msgCount++;
+            let payload = event.data;
+            if (payload) {
+                try {
+                    const parsed = JSON.parse(payload);
+                    log(`[错误] ${JSON.stringify(parsed.data || parsed)}`, 'msg-error');
+                } catch (e) {
+                    log(`[错误] ${payload}`, 'msg-error');
+                }
+            } else {
+                log('[连接错误] 可能网络中断或服务不可用，浏览器将自动重连', 'msg-error');
+            }
+            updateStats();
+        });
+
+        // 兜底：未命名事件
+        es.onmessage = function(event) {
+            msgCount++;
+            log(`[默认消息] ${event.data}`, 'msg-info');
+            updateStats();
+        };
+
+        es.onerror = function(event) {
+            if (es && es.readyState === EventSource.CLOSED) {
+                log('SSE 连接已关闭', 'msg-info');
+                setStatus('已断开', 'disconnected');
+                resetBtn();
+                es = null;
+            } else {
+                setStatus('重连中...', 'connecting');
+            }
+        };
+    }
+
+    function resetBtn() {
+        const btn = document.getElementById('connectBtn');
+        btn.textContent = '订阅';
+        btn.classList.remove('danger');
+    }
+
+    // 页面加载提示
+    log('请确认后端已启动，然后点击「订阅」连接 /sse/sub?username=xxx');
+</script>
+</body>
+</html>

@@ -54,8 +54,8 @@ async def get_current_user(
 async def require_admin(
     current_user: models.User = Depends(get_current_user),
 ):
-    """要求管理员及以上角色（superuser / admin / manager）"""
-    admin_roles = {"superuser", "admin", "manager"}
+    """要求管理员及以上角色（superuser / admin）"""
+    admin_roles = {"superuser", "admin"}
     if current_user.role_rel is None or current_user.role_rel.code not in admin_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -91,6 +91,11 @@ require_employer_read = PermissionChecker("employer:read")
 require_employer_add = PermissionChecker("employer:add")
 require_employer_update = PermissionChecker("employer:update")
 require_employer_delete = PermissionChecker("employer:delete")
+# ─── 路线管理 ───
+require_route_read = PermissionChecker("route:read")
+require_route_add = PermissionChecker("route:add")
+require_route_update = PermissionChecker("route:update")
+require_route_delete = PermissionChecker("route:delete")
 # ─── 权限管理（角色）───
 require_role_read = PermissionChecker("role:read")
 require_role_add = PermissionChecker("role:add")
@@ -131,11 +136,10 @@ async def get_all_users(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_read),
 ):
-    """获取用户列表（需 user:read 权限，仅返回当前平台用户）"""
+    """获取用户列表（需 user:read 权限）"""
     current_role_code = current_user.role_rel.code if current_user.role_rel else None
     users = await services.AuthService.get_users(
         db, skip=skip, limit=limit, role_name=role_name,
-        platform_uuid=str(current_user.platform_uuid),
         current_role_code=current_role_code,
     )
     return {"code": 200, "message": "获取成功", "data": users}
@@ -152,12 +156,11 @@ async def get_users_simple(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_user_read),
 ):
-    """获取用户列表（需 user:read 权限，仅返回当前平台用户）"""
+    """获取用户列表（需 user:read 权限）"""
     current_role_code = current_user.role_rel.code if current_user.role_rel else None
     users = await services.AuthService.get_users_simple(
         db, skip=skip, limit=limit, username=username,
-        role_name=role, platform_uuid=str(current_user.platform_uuid),
-        sort_by=sort_by, sort_order=sort_order,
+        role_name=role, sort_by=sort_by, sort_order=sort_order,
         current_role_code=current_role_code,
     )
     return {"code": 200, "message": "获取成功", "data": users}
@@ -170,8 +173,6 @@ async def create_user_by_admin(
     current_user: models.User = Depends(require_user_add),
 ):
     """管理员创建用户（需 user:add 权限）"""
-    if user.platform_uuid is None:
-        user.platform_uuid = current_user.platform_uuid
     result = await services.AuthService.create_user_by_admin(db=db, user=user, current_user=current_user)
     return {"code": 201, "message": "创建成功", "data": result.model_dump(mode="json")}
 
@@ -216,29 +217,15 @@ async def delete_user(
 @router.post("/register")
 async def register(
     user: schemas.UserCreate,
-    platform: str = Query("platform_a", description="平台编码，默认 platform_a"),
     db: AsyncSession = Depends(get_db),
 ):
     """用户注册，默认分配 user 角色"""
-    plat_result = await db.execute(
-        select(models.Platform).where(models.Platform.code == platform)
-    )
-    plat = plat_result.scalar_one_or_none()
-    if not plat:
-        return {"code": 400, "message": f"平台 '{platform}' 不存在", "data": None}
+    result = await services.AuthService.create_user(db=db, user=user)
 
-    result = await services.AuthService.create_user(db=db, user=user, platform_uuid=str(plat.uuid))
-
-    # 注册成功后生成token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = services.AuthService.create_access_token(
         data={"sub": result.username}, expires_delta=access_token_expires
     )
-
-    # # 将token存储到Redis
-    # await redisserve.set_token(
-    #     result.id, access_token, settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    # )
 
     return {
         "code": 201,
@@ -257,19 +244,16 @@ async def login(
     password: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """用户登录（OA用户无需传password字段）
-    - 根据用户名自动匹配所属平台，无需前端传入 platform
-    """
+    """用户登录"""
     user = await services.AuthService.authenticate_user(db, username, password or "")
     if not user:
         return {"code": 401, "message": "用户名或密码错误", "data": None}
     if user.is_active == 0:
         return {"code": 403, "message": "该用户已被禁用，请联系管理员", "data": None}
 
-    plat_code = user.platform_rel.code if user.platform_rel else ""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = services.AuthService.create_access_token(
-        data={"sub": user.username, "uuid":str(user.uuid),"platform": plat_code},
+        data={"sub": user.username},
         expires_delta=access_token_expires,
     )
     permissions = await services.get_user_permissions(user)
@@ -280,8 +264,6 @@ async def login(
         "data": {
             "userid": user.id,
             "username": user.username,
-            "platform": plat_code,
-            "is_oa_account": user.is_oa_account,
             "role": user.role_rel.name if user.role_rel else None,
             "permissions": permissions,
             "access_token": access_token,
@@ -292,25 +274,16 @@ async def login(
 
 @router.post("/visitor_login")
 async def visitor_login(
-    platform: str = Form(..., description="登录平台，如 platform_a"),
     db: AsyncSession = Depends(get_db),
 ):
     """游客登录，无需注册账号，仅可查看数据，不能编辑、新增、删除、导入、导出"""
-    # 根据平台编码查找平台 UUID
-    plat_result = await db.execute(
-        select(models.Platform).where(models.Platform.code == platform)
-    )
-    plat = plat_result.scalar_one_or_none()
-    if not plat:
-        return {"code": 400, "message": f"平台 '{platform}' 不存在", "data": None}
-
-    user = await services.AuthService.get_visitor_user(db, plat.uuid)
+    user = await services.AuthService.get_visitor_user(db)
     if not user:
         return {"code": 500, "message": "游客账号尚未初始化", "data": None}
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = services.AuthService.create_access_token(
-        data={"sub": user.username, "platform": plat.code},
+        data={"sub": user.username},
         expires_delta=access_token_expires,
     )
     permissions = await services.get_user_permissions(user)
@@ -322,7 +295,6 @@ async def visitor_login(
             "userid": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "platform": plat.code,
             "role": user.role_rel.name if user.role_rel else None,
             "permissions": permissions,
             "access_token": access_token,
@@ -338,9 +310,8 @@ async def logout(
 ):
     """用户登出"""
     if not current_user:
-        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
 
-    # 将token加入黑名单
     await redisserve.blacklist_token(token)
     await redisserve.delete_token(current_user.id)
     return {"code": 200, "message": "登出成功", "data": current_user.full_name}
@@ -351,11 +322,15 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)):
     """获取当前用户信息"""
 
     if not current_user:
-        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
+    permissions = await services.get_user_permissions(current_user)
     return {
         "code": 200,
         "message": "获取成功",
-        "data": services.AuthService._user_to_response(current_user).model_dump(mode="json"),
+        "data": {
+            **services.AuthService._user_to_response(current_user).model_dump(mode="json"),
+            "permissions": permissions,
+        },
     }
 
 
@@ -367,15 +342,13 @@ async def update_password(
 ):
     """修改密码"""
     if not current_user:
-        return {"code": 401, "message": "未登录或登录过期，请重新登录", "data": None}
+        return {"code": 401, "message": "Could not validate credentials", "data": None}
 
-    # 验证旧密码
     if not services.AuthService.verify_password(
         password_update.old_password, current_user.password
     ):
-        return {"code": 400, "message": "旧密码错误", "data": None}
+        return {"code": 400, "message": "原密码输入错误", "data": None}
 
-    # 更新密码
     await services.AuthService.update_password(
         db, current_user.id, password_update.new_password
     )
@@ -412,7 +385,7 @@ async def forget_password(
         return {"code": 500, "message": f"邮件发送失败: {str(e)}", "data": None}
 
     return {
-        "message": "密码已发送到您的邮箱，请查收",
+        "message": "Password has been sent to your email address",
         "code": 200,
         "data": services.AuthService._user_to_response(current_user).model_dump(mode="json"),
     }
@@ -428,11 +401,10 @@ async def get_roles_all(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
-    """获取所有角色（不分页，需 role:read 权限，仅返回当前平台角色）"""
+    """获取所有角色（不分页，需 role:read 权限）"""
     current_role_code = current_user.role_rel.code if current_user.role_rel else None
     result = await services.RoleService.get_roles_all(
         db, sort_by=sort_by, sort_order=sort_order, search=search,
-        platform_uuid=str(current_user.platform_uuid),
         current_role_code=current_role_code,
     )
     return {"code": 200, "message": "获取成功", "data": result}
@@ -448,27 +420,13 @@ async def get_roles(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
-    """获取角色列表（需 role:read 权限，仅返回当前平台角色）"""
+    """获取角色列表（需 role:read 权限）"""
     current_role_code = current_user.role_rel.code if current_user.role_rel else None
     result = await services.RoleService.get_roles(
         db, skip=skip, limit=limit, sort_by=sort_by, sort_order=sort_order,
-        search=search, platform_uuid=str(current_user.platform_uuid),
-        current_role_code=current_role_code,
+        search=search, current_role_code=current_role_code,
     )
     return {"code": 200, "message": "获取成功", "data": result}
-
-
-@router.get("/roles/uuid/{role_uuid}")
-async def get_role_by_uuid(
-    role_uuid: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(require_role_read),
-):
-    """通过 UUID 获取角色详情（需 role:read 权限）"""
-    role = await services.RoleService.get_role_by_uuid(db, role_uuid)
-    if not role:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="角色不存在")
-    return {"code": 200, "message": "获取成功", "data": schemas.RoleResponse.model_validate(role).model_dump(mode="json")}
 
 
 @router.get("/roles/{role_id}")
@@ -481,6 +439,13 @@ async def get_role_detail(
     role = await services.RoleService.get_role(db, role_id)
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="角色不存在")
+
+    if current_user.role_rel and role.level <= current_user.role_rel.level:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权查看同级或更高级别的角色",
+        )
+
     return {"code": 200, "message": "获取成功", "data": schemas.RoleResponse.model_validate(role).model_dump(mode="json")}
 
 
@@ -491,14 +456,7 @@ async def create_role(
     current_user: models.User = Depends(require_role_add),
 ):
     """创建角色（需 role:add 权限）"""
-    if role_data.platform_uuid is None:
-        role_data.platform_uuid = current_user.platform_uuid
-    elif str(role_data.platform_uuid) != str(current_user.platform_uuid):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="只能在本平台下创建角色",
-        )
-    role = await services.RoleService.create_role(db, role_data, current_user.username)
+    role = await services.RoleService.create_role(db, role_data, current_user)
     return {"code": 201, "message": "创建成功", "data": schemas.RoleResponse.model_validate(role).model_dump(mode="json")}
 
 
@@ -510,14 +468,8 @@ async def update_role(
     current_user: models.User = Depends(require_role_update),
 ):
     """更新角色（需 role:update 权限）"""
-    if role_data.platform_uuid is not None and str(role_data.platform_uuid) != str(current_user.platform_uuid):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="只能修改本平台下的角色",
-        )
-    role = await services.RoleService.update_role(db, role_id, role_data, current_user.username)
+    role = await services.RoleService.update_role(db, role_id, role_data, current_user)
     return {"code": 200, "message": "更新成功", "data": schemas.RoleResponse.model_validate(role).model_dump(mode="json")}
-
 
 
 @router.delete("/roles/{role_id}")
@@ -527,7 +479,7 @@ async def delete_role(
     current_user: models.User = Depends(require_role_delete),
 ):
     """删除角色（需 role:delete 权限）"""
-    role = await services.RoleService.delete_role(db, role_id, str(current_user.platform_uuid))
+    role = await services.RoleService.delete_role(db, role_id, current_user)
     return {"code": 200, "message": "删除成功", "data": role.name}
 
 
@@ -538,10 +490,8 @@ async def get_permissions(
     db: AsyncSession = Depends(get_db),
     current_user: models.User = Depends(require_role_read),
 ):
-    """获取权限列表（需 role:read 权限，仅返回当前平台权限）"""
-    permissions = await services.PermissionService.get_all_permissions(
-        db, platform_uuid=str(current_user.platform_uuid),
-    )
+    """获取权限列表（需 role:read 权限）"""
+    permissions = await services.PermissionService.get_all_permissions(db)
     items = [schemas.PermissionResponse.model_validate(p).model_dump(mode="json") for p in permissions]
 
     grouped = {}
@@ -550,15 +500,3 @@ async def get_permissions(
         grouped.setdefault(module, []).append(p)
 
     return {"code": 200, "message": "获取成功", "data": grouped}
-
-
-# ==================== 平台查询 ====================
-
-@router.get("/platforms")
-async def get_platforms(
-    db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    platforms = await services.PlatformService.get_platforms(db)
-    items = [schemas.PlatformResponse.model_validate(p).model_dump(mode="json") for p in platforms]
-    return {"code": 200, "message": "获取成功", "data": items}

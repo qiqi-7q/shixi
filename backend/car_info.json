@@ -1,0 +1,32 @@
+{
+  "message": "获取用户车辆基础信息成功",
+  "data": [
+    {
+      "vehicleGuid": 14307,
+      "vehicleNo": "527086498786",
+      "vehicleNoColor": 1,
+      "deviceGuid": 15070,
+      "deviceNo": "527086498786",
+      "deviceNoModel": "A800",
+      "orgGuid": 1581,
+      "orgName": "浙江零跑科技测试样机",
+      "deviceNoSource": "864527086498786",
+      "channelNum": 3,
+      "deadlineTime": 1815753599
+    },
+    {
+      "vehicleGuid": 14349,
+      "vehicleNo": "527086468243",
+      "vehicleNoColor": 1,
+      "deviceGuid": 15112,
+      "deviceNo": "527086468243",
+      "deviceNoModel": "A800",
+      "orgGuid": 1581,
+      "orgName": "浙江零跑科技测试样机",
+      "deviceNoSource": "864527086468243",
+      "channelNum": 3,
+      "deadlineTime": 1815753599
+    }
+  ],
+  "code": 200
+}

@@ -1,45 +1,42 @@
-import enum
 from app.core.database import Base
-from sqlalchemy import Column, DECIMAL, Date, DateTime, Enum, Integer, String, Text
+from sqlalchemy import Column, DECIMAL, Date, DateTime, Integer, String, Text
 from sqlalchemy.sql import func
 
 
-
-class DriverStatus(enum.Enum):
-    NORMAL = "正常"
-    FATIGUE = "疲劳"
-    MILDFAIR = "轻微疲劳"
-    SEVEREFATIGUE = "严重疲劳"
-
-
-class DriverMonitor(Base):
-    __tablename__ = "driver_monitors"
+class MonitorInfo(Base):
+    __tablename__ = "monitor_infos"
 
     id = Column(Integer, primary_key=True, index=True, comment="主键ID")
-    test_date = Column(Date, nullable=False, comment="日期")
+    test_date = Column(Date, index=True, comment="日期")
+    vin_code = Column(String(17), index=True, comment="测试车辆VIN号")
+    device_code = Column(String(50), comment="设备号")
 
-    test_start_time = Column(DateTime, nullable=False, comment="测试开始时间")
-    test_end_time = Column(DateTime, nullable=False, comment="测试结束时间")
-    driver_status = Column(
-        Enum(DriverStatus, native_enum=False, length=64),
-        default=DriverStatus.NORMAL,
-        nullable=False,
-        comment="司机状态",
-    )
-    vin_code = Column(
-        String(17), unique=True, index=True, nullable=False, comment="测试车辆VIN号"
-    )
-    driver_name = Column(String(50), nullable=False, comment="司机姓名")
-    dms_trigger_count = Column(Integer, nullable=False, comment="DMS触发次数")
+    fatigue = Column(Integer, comment="疲劳驾驶次数")
+    calling = Column(Integer, comment="接打电话次数")
+    smoke = Column(Integer, comment="抽烟次数")
+    distract = Column(Integer, comment="分神驾驶次数")
+    abnormal = Column(Integer, comment="驾驶员异常次数")
+    snapshot = Column(Integer, comment="自动抓拍次数")
+    driver_change = Column(Integer, comment="驾驶员变更次数")
+    no_belt = Column(Integer, comment="未系安全带次数")
 
-    distance = Column(DECIMAL(10, 2), nullable=False, comment="行驶里程")
-
-    power_start_duration = Column(DateTime, nullable=False, comment="车辆上电开始时间")
-    power_end_duration = Column(DateTime, nullable=False, comment="车辆上电结束时间")
+    mileage = Column(DECIMAL(10, 1), comment="行驶里程(km)")
+    duration = Column(Integer, comment="车辆上电时长(s)")
 
     remark = Column(Text, comment="备注")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
 
+
+class AlarmRecord(Base):
+    """实时报警记录表"""
+
+    __tablename__ = "alarm_records"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True, comment="序号")
+    alarm_id = Column(String(64), index=True, comment="平台报警流水号(alarmID)")
+    alarm_time = Column(DateTime, nullable=False, comment="报警时间")
+    alarm_type = Column(String(100), nullable=False, comment="报警类型")
+    speed = Column(DECIMAL(10, 2), nullable=True, comment="速度")
+    vin_code = Column(String(50), comment="车辆VIN号")
+    remark = Column(Text, comment="备注")
     create_time = Column(DateTime, server_default=func.now(), comment="创建时间")
-    update_time = Column(
-        DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间"
-    )

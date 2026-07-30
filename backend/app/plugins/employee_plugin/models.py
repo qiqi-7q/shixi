@@ -7,7 +7,8 @@ from enum import Enum
 # 岗位类型枚举
 class JobType(str, Enum):
     DRIVER = "司机"  # 司机
-    OUTSOURCE = "外协"  # 外协
+    OUTSOURCE = "外协工程师"  # 外协
+    OFFICIAL = "正式员工"  # 正式员工
 
 
 class Employee(Base):
